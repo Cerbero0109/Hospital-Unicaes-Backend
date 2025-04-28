@@ -15,6 +15,17 @@ const detalleConsultaRoutes = require("./routes/detalleConsultaRoutes");
 const historialMedicoRoutes = require("./routes/historialMedicoRoutes");
 const examenRoutes = require("./routes/examenesRoutes");
 
+// Middlewares
+const { verificarNotificaciones } = require("./middlewares/notificacionesMiddleware");
+
+// Rutas Modulo Farmacia
+const categoriaMedicamentoRoutes = require("./routes/categoriaMedicamentoRoutes");
+const presentacionMedicamentoRoutes = require("./routes/presentacionMedicamentoRoutes");
+const proveedorRoutes = require("./routes/proveedorRoutes");
+const medicamentoRoutes = require("./routes/medicamentoRoutes");
+const stockRoutes = require("./routes/stockRoutes");
+const notificacionesRoutes = require("./routes/notificacionesRoutes");
+
 const app = express();
 
 // Configuración de CORS
@@ -50,6 +61,13 @@ app.use("/detalles-consultas", detalleConsultaRoutes);
 app.use("/historiales-medicos", historialMedicoRoutes);
 app.use("/examenes", examenRoutes);
 
+// Rutas Modulo Farmacia 
+app.use("/categorias-medicamento", categoriaMedicamentoRoutes);
+app.use("/presentaciones-medicamento", presentacionMedicamentoRoutes);
+app.use("/proveedores", proveedorRoutes);
+app.use("/medicamentos", medicamentoRoutes);
+app.use("/stock", stockRoutes);
+app.use("/notificaciones", notificacionesRoutes);
 
 
 // Iniciar servidor

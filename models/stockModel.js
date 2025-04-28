@@ -1,0 +1,213 @@
+//MODULO FARMACIA
+const db = require("../database/conexion");
+
+const Stock = {};
+
+// Listar todos los registros de stock activos
+Stock.listarStock = (callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.estado = 'activo'
+    ORDER BY s.fecha_caducidad ASC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error al listar el stock:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Listar stock por ID
+Stock.listarStockPorId = (id, callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.id_stock = ?
+  `;
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error("Error al obtener el stock por ID:", err);
+      return callback(err, null);
+    }
+    return callback(null, result[0]);
+  });
+};
+
+// Listar stock por ID de medicamento
+Stock.listarStockPorMedicamento = (idMedicamento, callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.id_medicamento = ? AND s.estado = 'activo'
+    ORDER BY s.fecha_caducidad ASC
+  `;
+
+  db.query(sql, [idMedicamento], (err, results) => {
+    if (err) {
+      console.error("Error al obtener el stock por ID de medicamento:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Insertar nuevo registro de stock
+Stock.insertarStock = (stockData, callback) => {
+  const sql = `
+    INSERT INTO stock (
+      id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
+    ) VALUES (?, ?, ?, ?, ?)
+  `;
+  
+  const { 
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
+  } = stockData;
+
+  db.query(sql, [
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
+  ], (err, result) => {
+    if (err) {
+      console.error("Error al insertar el stock:", err);
+      return callback(err, null);
+    }
+    
+    // Si se insertó correctamente, verificar si es necesario registrar en ingreso_medicamento
+    if (stockData.registrar_ingreso && result.insertId) {
+      const ingresoData = {
+        id_stock: result.insertId,
+        tipo_ingreso: stockData.tipo_ingreso || 'compra',
+        precio_unitario: stockData.precio_unitario || 0,
+        costo_unitario: stockData.costo_unitario || 0,
+        observaciones: stockData.observaciones || null
+      };
+      
+      Stock.registrarIngresoMedicamento(ingresoData, (errorIngreso) => {
+        if (errorIngreso) {
+          console.error("Error al registrar el ingreso del medicamento:", errorIngreso);
+          // Aunque falle el registro del ingreso, el stock ya se añadió
+        }
+        return callback(null, result);
+      });
+    } else {
+      return callback(null, result);
+    }
+  });
+};
+
+// Actualizar stock
+Stock.actualizarStock = (id, stockData, callback) => {
+  const sql = `
+    UPDATE stock 
+    SET id_medicamento = ?, numero_lote = ?, fecha_fabricacion = ?, 
+        fecha_caducidad = ?, cantidad_disponible = ?
+    WHERE id_stock = ?
+  `;
+  
+  const { 
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
+  } = stockData;
+
+  db.query(sql, [
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible, id
+  ], (err, result) => {
+    if (err) {
+      console.error("Error al actualizar el stock:", err);
+      return callback(err, null);
+    }
+    return callback(null, result);
+  });
+};
+
+// Cambiar estado de stock (agotado o vencido)
+Stock.cambiarEstadoStock = (id, nuevoEstado, callback) => {
+  // Validar que el nuevo estado sea válido
+  const estadosValidos = ['activo', 'agotado', 'vencido'];
+  if (!estadosValidos.includes(nuevoEstado)) {
+    return callback(new Error("Estado no válido"), null);
+  }
+
+  const sql = `UPDATE stock SET estado = ? WHERE id_stock = ?`;
+
+  db.query(sql, [nuevoEstado, id], (err, result) => {
+    if (err) {
+      console.error("Error al cambiar el estado del stock:", err);
+      return callback(err, null);
+    }
+    return callback(null, result);
+  });
+};
+
+// Verificar stock próximo a vencer
+Stock.verificarStockProximoVencer = (diasLimite, callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.estado = 'activo' AND s.cantidad_disponible > 0
+    AND DATEDIFF(s.fecha_caducidad, CURDATE()) <= ?
+    ORDER BY s.fecha_caducidad ASC
+  `;
+
+  db.query(sql, [diasLimite], (err, results) => {
+    if (err) {
+      console.error("Error al verificar stock próximo a vencer:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+//TABLA `ingreso_medicamento`
+
+// Registrar ingreso de medicamento
+Stock.registrarIngresoMedicamento = (ingresoData, callback) => {
+  const sql = `
+    INSERT INTO ingreso_medicamento (
+      id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+    ) VALUES (?, ?, ?, ?, ?)
+  `;
+  
+  const { 
+    id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+  } = ingresoData;
+
+  db.query(sql, [
+    id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+  ], (err, result) => {
+    if (err) {
+      console.error("Error al registrar el ingreso de medicamento:", err);
+      return callback(err);
+    }
+    return callback(null);
+  });
+};
+
+// Listar ingresos de medicamentos
+Stock.listarIngresosMedicamentos = (callback) => {
+  const sql = `
+    SELECT i.*, s.numero_lote, s.cantidad_disponible, 
+           m.codigo, m.nombre, m.concentracion
+    FROM ingreso_medicamento i
+    JOIN stock s ON i.id_stock = s.id_stock
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    ORDER BY i.fecha_ingreso DESC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error al listar los ingresos de medicamentos:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+module.exports = Stock;
