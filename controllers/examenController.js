@@ -47,3 +47,14 @@ exports.mostrarResultadosExamen = (req, res) => {
         res.status(200).json(results);
     });
 }
+
+//Metodo Read para Mostrar Examenes Completados
+exports.listarExamenesCompletados = (req, res) => {
+    Examen.listarExamenesCompletados((err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al listar los examenes completados", error: err });
+        }
+
+        res.status(200).json(results);
+    });
+}

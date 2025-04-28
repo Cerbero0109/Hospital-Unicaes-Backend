@@ -116,4 +116,31 @@ Examen.mostrarResultadosExamen = (id_examen, callback) => {
     });
 };
 
+
+//Listar Examenes Completados
+Examen.listarExamenesCompletados = (callback) => {
+    const sql = `SELECT e.id_examen,
+                        p.id_paciente,
+                        p.nombre_paciente, 
+                        p.apellido_paciente,
+                        u.nombre AS doctor_nombre, 
+                        u.apellido AS doctor_apellido,
+                        t.nombre AS examen_nombre, 
+                        e.fecha_solicitud
+                        FROM paciente p
+                        JOIN muestra m ON p.id_paciente=m.id_paciente
+                        JOIN examen e ON e.id_muestra = m.id_muestra
+                        JOIN usuario u ON e.id_usuario = u.id_usuario
+                        JOIN tipo_examen t ON e.id_tipo_examen= t.id_tipo_examen
+                        WHERE e.estado = 'completado';`;
+
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("model: Error al listar los examenes completados:", err);
+            return callback(err, null);
+        }
+        return callback(null, results);
+    });
+};
+
 module.exports = Examen;
