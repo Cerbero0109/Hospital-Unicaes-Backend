@@ -3,18 +3,22 @@ const db = require("../database/conexion");
 
 const Medicamento = {};
 
-// Listar medicamentos activos
+// Listar medicamentos activos - Actualizado para calcular stock_actual
 Medicamento.listarMedicamentos = (callback) => {
   const sql = `
     SELECT m.*, 
            c.nombre_categoria, 
            p.nombre_presentacion,
-           pr.nombre as nombre_proveedor
+           pr.nombre as nombre_proveedor,
+           (SELECT SUM(s.cantidad_disponible) 
+            FROM stock s 
+            WHERE s.id_medicamento = m.id_medicamento AND s.estado = 'activo') as stock_actual
     FROM medicamento m
     LEFT JOIN categoria_medicamento c ON m.id_categoria = c.id_categoria
     LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
     LEFT JOIN proveedor pr ON m.id_proveedor = pr.id_proveedor
     WHERE m.estado = 'activo'
+    ORDER BY m.nombre ASC
   `;
 
   db.query(sql, (err, results) => {
@@ -26,13 +30,16 @@ Medicamento.listarMedicamentos = (callback) => {
   });
 };
 
-// Listar medicamento por ID
+// Listar medicamento por ID - Actualizado para calcular stock_actual
 Medicamento.listarMedicamentoPorId = (id, callback) => {
   const sql = `
     SELECT m.*, 
            c.nombre_categoria, 
            p.nombre_presentacion,
-           pr.nombre as nombre_proveedor
+           pr.nombre as nombre_proveedor,
+           (SELECT SUM(s.cantidad_disponible) 
+            FROM stock s 
+            WHERE s.id_medicamento = m.id_medicamento AND s.estado = 'activo') as stock_actual
     FROM medicamento m
     LEFT JOIN categoria_medicamento c ON m.id_categoria = c.id_categoria
     LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
@@ -121,16 +128,21 @@ Medicamento.cambiarEstadoMedicamento = (id, callback) => {
   });
 };
 
-// Verificar medicamentos con stock bajo
+// Verificar medicamentos con stock bajo - Actualizado para incluir <= stock_minimo
+// y añadir campos relevantes como categoría y concentración
 Medicamento.verificarStockBajo = (callback) => {
   const sql = `
-    SELECT m.id_medicamento, m.codigo, m.nombre, m.stock_minimo,
-           SUM(s.cantidad_disponible) as stock_actual
+    SELECT m.id_medicamento, m.codigo, m.nombre, m.stock_minimo, 
+           m.concentracion, c.nombre_categoria, p.nombre_presentacion,
+           (SELECT SUM(s.cantidad_disponible) 
+            FROM stock s 
+            WHERE s.id_medicamento = m.id_medicamento AND s.estado = 'activo') as stock_actual
     FROM medicamento m
-    LEFT JOIN stock s ON m.id_medicamento = s.id_medicamento
-    WHERE m.estado = 'activo' AND (s.estado = 'activo' OR s.estado IS NULL)
-    GROUP BY m.id_medicamento
-    HAVING stock_actual < m.stock_minimo OR stock_actual IS NULL
+    LEFT JOIN categoria_medicamento c ON m.id_categoria = c.id_categoria
+    LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
+    WHERE m.estado = 'activo'
+    HAVING stock_actual <= m.stock_minimo OR stock_actual IS NULL
+    ORDER BY stock_actual ASC
   `;
 
   db.query(sql, (err, results) => {

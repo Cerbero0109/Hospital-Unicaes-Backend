@@ -145,13 +145,29 @@ Stock.cambiarEstadoStock = (id, nuevoEstado, callback) => {
   });
 };
 
-// Verificar stock próximo a vencer
+// Verificar stock próximo a vencer - Actualizado para mostrar cantidad inicial y disponible
 Stock.verificarStockProximoVencer = (diasLimite, callback) => {
   const sql = `
-    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    SELECT 
+      s.id_stock,
+      s.id_medicamento,
+      s.numero_lote,
+      s.fecha_fabricacion,
+      s.fecha_caducidad,
+      s.cantidad_disponible,
+      m.codigo,
+      m.nombre,
+      m.concentracion,
+      c.nombre_categoria,
+      p.nombre_presentacion,
+      (SELECT SUM(cantidad_disponible) 
+       FROM stock 
+       WHERE id_medicamento = s.id_medicamento AND estado = 'activo') as cantidad_inicial
     FROM stock s
     JOIN medicamento m ON s.id_medicamento = m.id_medicamento
-    WHERE s.estado = 'activo' AND s.cantidad_disponible > 0
+    LEFT JOIN categoria_medicamento c ON m.id_categoria = c.id_categoria
+    LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
+    WHERE s.estado = 'activo' 
     AND DATEDIFF(s.fecha_caducidad, CURDATE()) <= ?
     ORDER BY s.fecha_caducidad ASC
   `;
@@ -159,6 +175,25 @@ Stock.verificarStockProximoVencer = (diasLimite, callback) => {
   db.query(sql, [diasLimite], (err, results) => {
     if (err) {
       console.error("Error al verificar stock próximo a vencer:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Listar lotes agotados
+Stock.listarLotesAgotados = (callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.estado = 'agotado'
+    ORDER BY s.fecha_ingreso DESC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error al listar lotes agotados:", err);
       return callback(err, null);
     }
     return callback(null, results);

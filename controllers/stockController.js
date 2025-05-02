@@ -247,9 +247,9 @@ exports.cambiarEstadoStock = (req, res) => {
   });
 };
 
-// Verificar stock próximo a vencer
+// Verificar stock próximo a vencer - Actualizado para usar 90 días por defecto
 exports.verificarStockProximoVencer = (req, res) => {
-  const diasLimite = parseInt(req.query.dias) || 30; // Por defecto, 30 días
+  const diasLimite = parseInt(req.query.dias) || 90; // Por defecto, 90 días
   
   Stock.verificarStockProximoVencer(diasLimite, (err, results) => {
     if (err) {
@@ -264,6 +264,23 @@ exports.verificarStockProximoVencer = (req, res) => {
       success: true,
       data: results,
       alerta: results.length > 0 ? `Se encontraron ${results.length} lotes próximos a vencer en los próximos ${diasLimite} días` : null
+    });
+  });
+};
+
+// Listar lotes agotados
+exports.listarLotesAgotados = (req, res) => {
+  Stock.listarLotesAgotados((err, results) => {
+    if (err) {
+      return res.status(500).json({ 
+        success: false,
+        message: "Error al listar los lotes agotados", 
+        error: err 
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: results
     });
   });
 };
