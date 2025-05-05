@@ -25,6 +25,7 @@ const proveedorRoutes = require("./routes/proveedorRoutes");
 const medicamentoRoutes = require("./routes/medicamentoRoutes");
 const stockRoutes = require("./routes/stockRoutes");
 const notificacionesRoutes = require("./routes/notificacionesRoutes");
+const despachoRoutes = require("./routes/despachoRoutes");
 
 const app = express();
 
@@ -68,7 +69,7 @@ app.use("/proveedores", proveedorRoutes);
 app.use("/medicamentos", medicamentoRoutes);
 app.use("/stock", stockRoutes);
 app.use("/notificaciones", notificacionesRoutes);
-
+app.use("/despacho", despachoRoutes);
 
 // Iniciar servidor
 app.listen(8081, () => {
