@@ -95,6 +95,7 @@ Examen.mostrarResultadosExamen = (id_examen, callback) => {
                     p.apellido_paciente, 
                     t.nombre AS nombre_examen, 
                     m.nombre_muestra,
+                    COALESCE(r.id_resultado, 'Esperando un ID') AS id_resultado,
                     COALESCE(r.nombre_parametro, 'Esperando resultados') AS nombre_parametro,
                     COALESCE(r.valor, 'Esperando valor') AS valor,
                     COALESCE(r.unidad, 'Esperando unidad') AS unidad,
@@ -140,6 +141,76 @@ Examen.listarExamenesCompletados = (callback) => {
             return callback(err, null);
         }
         return callback(null, results);
+    });
+};
+
+// Crear un nuevo resultado de examen
+Examen.crearResultadoExamen = (id_examen, nuevoResultado, callback) => {
+    const sql = `INSERT INTO resultados (id_examen, nombre_parametro, valor, unidad, rango_referencia)
+                  VALUES (?, ?, ?, ?, ?)`;
+    db.query(sql, [id_examen, nuevoResultado.nombre_parametro, nuevoResultado.valor, nuevoResultado.unidad, nuevoResultado.rango_referencia], (err, result) => {
+        if (err) {
+            console.error("model: Error al crear el resultado del examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Actualizar un resultado de examen existente
+Examen.actualizarResultadoExamen = (id_resultado, resultadoActualizado, callback) => {
+    const sql = `UPDATE resultados
+                  SET nombre_parametro = ?,
+                      valor = ?,
+                      unidad = ?,
+                      rango_referencia = ?
+                  WHERE id_resultado = ?`;
+    db.query(sql, [resultadoActualizado.nombre_parametro, resultadoActualizado.valor, resultadoActualizado.unidad, resultadoActualizado.rango_referencia, id_resultado], (err, result) => {
+        if (err) {
+            console.error("model: Error al actualizar el resultado del examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Actualizar el estado de un examen a inactivo
+Examen.marcarExamenComoInactivo = (id_examen, callback) => {
+    const sql = `UPDATE examen
+                    SET estado = 'inactivo'
+                    WHERE id_examen = ?`;
+    db.query(sql, [id_examen], (err, result) => {
+        if (err) {
+            console.error("model: Error al actualizar el estado del examen a inactivo:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Actualizar el estado de un resultado de examen a inactivo
+Examen.eliminarResultadoExamen = (id_resultado, callback) => {
+    const sql = `UPDATE resultados
+                    SET estado = 'inactivo'
+                    WHERE id_resultado = ?`;
+    db.query(sql, [id_resultado], (err, result) => {
+        if (err) {
+            console.error("model: Error al actualizar el estado del resultado del examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Marcar un examen como completado
+Examen.marcarExamenComoCompletado = (id_examen, callback) => {
+    const sql = `UPDATE examen SET estado = 'completado' WHERE id_examen = ?`;
+    db.query(sql, [id_examen], (err, result) => {
+        if (err) {
+            console.error("model: Error al marcar el examen como completado:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
     });
 };
 
