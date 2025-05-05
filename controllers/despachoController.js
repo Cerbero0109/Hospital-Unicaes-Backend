@@ -61,14 +61,14 @@ exports.obtenerLotesDisponibles = (req, res) => {
 // Realizar despacho completo
 exports.realizarDespacho = (req, res) => {
   const { id_receta, detalles, observaciones } = req.body;
-  
-  // Obtener id_usuario del usuario logeado - puede venir de diferentes partes
-  const id_usuario = req.user?.id_usuario || req.session?.usuario?.id_usuario || req.usuario?.id_usuario;
-  
+
+  // Obtener id_usuario de la sesión
+  const id_usuario = req.session.user?.id_usuario;
+
   if (!id_usuario) {
     return res.status(401).json({
       success: false,
-      message: "Usuario no autenticado"
+      message: "Usuario no autenticado o sin permisos suficientes"
     });
   }
 
@@ -85,7 +85,7 @@ exports.realizarDespacho = (req, res) => {
     // Crear registro de despacho
     const despachoData = {
       id_receta,
-      id_usuario,
+      id_usuario, // Aquí utilizamos el ID del usuario de la sesión
       estado: 'completo',
       observaciones
     };
@@ -131,7 +131,7 @@ exports.realizarDespacho = (req, res) => {
             if (detalleErr) {
               erroresDetalle.push(detalleErr);
               detallesProcesados++;
-              
+
               if (detallesProcesados === totalDetalles) {
                 // Si hay errores, hacer rollback
                 return db.rollback(() => {
@@ -150,7 +150,7 @@ exports.realizarDespacho = (req, res) => {
               if (stockErr) {
                 erroresDetalle.push(stockErr);
                 detallesProcesados++;
-                
+
                 if (detallesProcesados === totalDetalles) {
                   // Si hay errores, hacer rollback
                   return db.rollback(() => {
