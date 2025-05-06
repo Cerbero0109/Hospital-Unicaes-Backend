@@ -45,6 +45,7 @@ Examen.PacientesConExamen = (callback) => {
                     FROM paciente p
                     JOIN muestra m ON p.id_paciente = m.id_paciente
                     JOIN examen e ON e.id_muestra = m.id_muestra
+                    WHERE p.estado = 'activo'
                     GROUP BY 
                         p.id_paciente, 
                         p.nombre_paciente, 
@@ -190,8 +191,7 @@ Examen.marcarExamenComoInactivo = (id_examen, callback) => {
 
 // Actualizar el estado de un resultado de examen a inactivo
 Examen.eliminarResultadoExamen = (id_resultado, callback) => {
-    const sql = `UPDATE resultados
-                    SET estado = 'inactivo'
+    const sql = `DELETE FROM resultados 
                     WHERE id_resultado = ?`;
     db.query(sql, [id_resultado], (err, result) => {
         if (err) {
@@ -208,6 +208,19 @@ Examen.marcarExamenComoCompletado = (id_examen, callback) => {
     db.query(sql, [id_examen], (err, result) => {
         if (err) {
             console.error("model: Error al marcar el examen como completado:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+
+//Actuaalizar el estado de un paciente a inactivo
+Examen.marcarPacienteComoInactivo = (id_paciente, callback) => {
+    const sql = `UPDATE paciente SET estado = 'inactivo' WHERE id_paciente = ?`;
+    db.query(sql, [id_paciente], (err, result) => {
+        if (err) {
+            console.error("model: Error al marcar el paciente como inactivo:", err);
             return callback(err, null);
         }
         return callback(null, result);

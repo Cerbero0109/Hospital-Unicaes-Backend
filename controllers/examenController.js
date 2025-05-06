@@ -103,9 +103,9 @@ exports.marcarExamenComoInactivo = (req, res) => {
     });
 };
 
-// Metodo Delete para "Eliminar" (actualizar estado a inactivo) un resultado de examen
+// Metodo Delete para "Eliminar" un resultado de examen
 exports.eliminarResultadoExamen = (req, res) => {
-    const id_resultado = req.params.id_resultado; // Obtener el id del resultado a "eliminar"
+    const id_resultado = req.params.id_resultado; 
 
     Examen.eliminarResultadoExamen(id_resultado, (err, result) => {
         if (err) {
@@ -130,5 +130,20 @@ exports.marcarExamenComoCompletado = (req, res) => {
             return res.status(404).json({ message: "Examen no encontrado" });
         }
         res.status(200).json({ message: "Examen marcado como completado exitosamente" });
+    });
+};
+
+//Metodo para actualizar el estado de un paciente a inactivo
+exports.marcarPacienteComoInactivo = (req, res) => {
+    const id_paciente = req.params.id_paciente; // Obtener el id del paciente a marcar como inactivo
+
+    Examen.marcarPacienteComoInactivo(id_paciente, (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al marcar el paciente como inactivo", error: err });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Paciente no encontrado" });
+        }
+        res.status(200).json({ message: "Paciente marcado como inactivo exitosamente" });
     });
 };
