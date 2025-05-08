@@ -6,10 +6,10 @@ const Medicamento = require("../models/medicamentoModel");
 exports.listarStock = (req, res) => {
   Stock.listarStock((err, results) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al listar el stock", 
-        error: err 
+        message: "Error al listar el stock",
+        error: err
       });
     }
     res.status(200).json({
@@ -25,20 +25,20 @@ exports.obtenerStockPorId = (req, res) => {
 
   Stock.listarStockPorId(id, (err, result) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al obtener el stock", 
-        error: err 
+        message: "Error al obtener el stock",
+        error: err
       });
     }
-    
+
     if (!result) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Stock no encontrado" 
+        message: "Stock no encontrado"
       });
     }
-    
+
     res.status(200).json({
       success: true,
       data: result
@@ -52,13 +52,13 @@ exports.obtenerStockPorMedicamento = (req, res) => {
 
   Stock.listarStockPorMedicamento(id, (err, results) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al obtener el stock del medicamento", 
-        error: err 
+        message: "Error al obtener el stock del medicamento",
+        error: err
       });
     }
-    
+
     res.status(200).json({
       success: true,
       data: results
@@ -69,15 +69,21 @@ exports.obtenerStockPorMedicamento = (req, res) => {
 // Crear nuevo registro de stock
 exports.crearStock = (req, res) => {
   // Validar datos de entrada
-  const { 
-    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, 
+  const {
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad,
     cantidad_disponible, tipo_ingreso, precio_unitario, costo_unitario, observaciones
   } = req.body;
-  
+
+  // Obtener id_usuario de la sesión - igual que en despacho
+  const id_usuario = req.session.user?.id_usuario;
+
+  console.log("Session:", req.session);
+  console.log("Usuario ID:", id_usuario);
+
   if (!id_medicamento || !numero_lote || !fecha_fabricacion || !fecha_caducidad || !cantidad_disponible) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: "Todos los campos obligatorios deben ser proporcionados" 
+      message: "Todos los campos obligatorios deben ser proporcionados"
     });
   }
 
@@ -85,7 +91,7 @@ exports.crearStock = (req, res) => {
   const fechaActual = new Date();
   const fechaFabricacion = new Date(fecha_fabricacion);
   const fechaCaducidad = new Date(fecha_caducidad);
-  
+
   if (fechaCaducidad <= fechaActual) {
     return res.status(400).json({
       success: false,
@@ -107,6 +113,7 @@ exports.crearStock = (req, res) => {
     fecha_caducidad,
     cantidad_disponible,
     registrar_ingreso: true,
+    id_usuario, // Pasamos el ID del usuario al modelo
     tipo_ingreso: tipo_ingreso || 'compra',
     precio_unitario: precio_unitario || 0,
     costo_unitario: costo_unitario || 0,
@@ -115,24 +122,24 @@ exports.crearStock = (req, res) => {
 
   Stock.insertarStock(stockData, (err, result) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al crear el registro de stock", 
-        error: err 
+        message: "Error al crear el registro de stock",
+        error: err
       });
     }
-    
+
     // Verificar si con este nuevo stock el medicamento sigue teniendo stock bajo
     Medicamento.verificarStockBajo((errStock, medicamentosStockBajo) => {
       let alerta = null;
-      
+
       if (!errStock && medicamentosStockBajo) {
         const medicamento = medicamentosStockBajo.find(m => m.id_medicamento === parseInt(id_medicamento));
         if (medicamento) {
           alerta = `El medicamento ${medicamento.nombre} sigue con stock bajo`;
         }
       }
-      
+
       res.status(201).json({
         success: true,
         message: "Registro de stock creado exitosamente",
@@ -146,21 +153,21 @@ exports.crearStock = (req, res) => {
 // Actualizar stock
 exports.actualizarStock = (req, res) => {
   const id = req.params.id;
-  const { 
-    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible 
+  const {
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
   } = req.body;
-  
+
   if (!id_medicamento || !numero_lote || !fecha_fabricacion || !fecha_caducidad || cantidad_disponible === undefined) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: "Todos los campos obligatorios deben ser proporcionados" 
+      message: "Todos los campos obligatorios deben ser proporcionados"
     });
   }
 
   // Validar que las fechas sean correctas
   const fechaFabricacion = new Date(fecha_fabricacion);
   const fechaCaducidad = new Date(fecha_caducidad);
-  
+
   if (fechaCaducidad <= fechaFabricacion) {
     return res.status(400).json({
       success: false,
@@ -178,31 +185,31 @@ exports.actualizarStock = (req, res) => {
 
   Stock.actualizarStock(id, stockData, (err, result) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al actualizar el registro de stock", 
-        error: err 
+        message: "Error al actualizar el registro de stock",
+        error: err
       });
     }
-    
+
     if (result.affectedRows === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Registro de stock no encontrado" 
+        message: "Registro de stock no encontrado"
       });
     }
-    
+
     // Verificar estado de stock del medicamento
     Medicamento.verificarStockBajo((errStock, medicamentosStockBajo) => {
       let alerta = null;
-      
+
       if (!errStock && medicamentosStockBajo) {
         const medicamento = medicamentosStockBajo.find(m => m.id_medicamento === parseInt(id_medicamento));
         if (medicamento) {
           alerta = `El medicamento ${medicamento.nombre} tiene stock bajo`;
         }
       }
-      
+
       res.status(200).json({
         success: true,
         message: "Registro de stock actualizado exitosamente",
@@ -216,7 +223,7 @@ exports.actualizarStock = (req, res) => {
 exports.cambiarEstadoStock = (req, res) => {
   const id = req.params.id;
   const { estado } = req.body;
-  
+
   if (!estado || !['activo', 'agotado', 'vencido'].includes(estado)) {
     return res.status(400).json({
       success: false,
@@ -226,20 +233,20 @@ exports.cambiarEstadoStock = (req, res) => {
 
   Stock.cambiarEstadoStock(id, estado, (err, result) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al cambiar el estado del stock", 
-        error: err 
+        message: "Error al cambiar el estado del stock",
+        error: err
       });
     }
-    
+
     if (result.affectedRows === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Registro de stock no encontrado" 
+        message: "Registro de stock no encontrado"
       });
     }
-    
+
     res.status(200).json({
       success: true,
       message: `Estado del stock cambiado a '${estado}' exitosamente`
@@ -250,16 +257,16 @@ exports.cambiarEstadoStock = (req, res) => {
 // Verificar stock próximo a vencer - Actualizado para usar 90 días por defecto
 exports.verificarStockProximoVencer = (req, res) => {
   const diasLimite = parseInt(req.query.dias) || 90; // Por defecto, 90 días
-  
+
   Stock.verificarStockProximoVencer(diasLimite, (err, results) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al verificar el stock próximo a vencer", 
-        error: err 
+        message: "Error al verificar el stock próximo a vencer",
+        error: err
       });
     }
-    
+
     res.status(200).json({
       success: true,
       data: results,
@@ -272,10 +279,10 @@ exports.verificarStockProximoVencer = (req, res) => {
 exports.listarLotesAgotados = (req, res) => {
   Stock.listarLotesAgotados((err, results) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al listar los lotes agotados", 
-        error: err 
+        message: "Error al listar los lotes agotados",
+        error: err
       });
     }
     res.status(200).json({
@@ -289,10 +296,10 @@ exports.listarLotesAgotados = (req, res) => {
 exports.listarIngresosMedicamentos = (req, res) => {
   Stock.listarIngresosMedicamentos((err, results) => {
     if (err) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
-        message: "Error al listar los ingresos de medicamentos", 
-        error: err 
+        message: "Error al listar los ingresos de medicamentos",
+        error: err
       });
     }
     res.status(200).json({

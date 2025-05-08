@@ -26,6 +26,7 @@ const medicamentoRoutes = require("./routes/medicamentoRoutes");
 const stockRoutes = require("./routes/stockRoutes");
 const notificacionesRoutes = require("./routes/notificacionesRoutes");
 const despachoRoutes = require("./routes/despachoRoutes");
+const movimientoInventarioRoutes = require("./routes/movimientoInventarioRoutes");
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.use("/medicamentos", medicamentoRoutes);
 app.use("/stock", stockRoutes);
 app.use("/notificaciones", notificacionesRoutes);
 app.use("/despacho", despachoRoutes);
+app.use("/movimientos-inventario", movimientoInventarioRoutes);
 
 // Iniciar servidor
 app.listen(8081, () => {
