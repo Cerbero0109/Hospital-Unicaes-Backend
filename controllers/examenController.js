@@ -38,7 +38,7 @@ exports.historialExamenesPorPaciente = (req, res) => {
 
 // Metodo Read para Mostrar Los Resultados de un Examen
 exports.mostrarResultadosExamen = (req, res) => {
-    const id_examen = req.params.id_examen; // Obtener el id del examen de los parámetros de la solicitud
+    const id_examen = req.params.id_examen; 
     Examen.mostrarResultadosExamen(id_examen, (err, results) => {
         if (err) {
             return res.status(500).json({ message: "Error al listar los resultados del examen", error: err });
@@ -103,9 +103,9 @@ exports.marcarExamenComoInactivo = (req, res) => {
     });
 };
 
-// Metodo Delete para "Eliminar" (actualizar estado a inactivo) un resultado de examen
+// Metodo Delete para "Eliminar" un resultado de examen
 exports.eliminarResultadoExamen = (req, res) => {
-    const id_resultado = req.params.id_resultado; // Obtener el id del resultado a "eliminar"
+    const id_resultado = req.params.id_resultado; 
 
     Examen.eliminarResultadoExamen(id_resultado, (err, result) => {
         if (err) {
@@ -130,5 +130,64 @@ exports.marcarExamenComoCompletado = (req, res) => {
             return res.status(404).json({ message: "Examen no encontrado" });
         }
         res.status(200).json({ message: "Examen marcado como completado exitosamente" });
+    });
+};
+
+//Metodo para actualizar el estado de un paciente a inactivo
+exports.marcarPacienteComoInactivo = (req, res) => {
+    const id_paciente = req.params.id_paciente; // Obtener el id del paciente a marcar como inactivo
+
+    Examen.marcarPacienteComoInactivo(id_paciente, (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al marcar el paciente como inactivo", error: err });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Paciente no encontrado" });
+        }
+        res.status(200).json({ message: "Paciente marcado como inactivo exitosamente" });
+    });
+};
+
+//Metodo para listar los últimos exámenes
+exports.listarUltimosExamenes = (req, res) => {
+    Examen.listarUltimosExamenes((err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al listar los últimos exámenes", error: err });
+        }
+
+        res.status(200).json(results);
+    });
+}
+
+//Metodo para contar los exámenes pendientes
+exports.contarExamenesPendientes = (req, res) => {
+    Examen.contarExamenesPendientes((err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al contar los exámenes pendientes", error: err });
+        }
+
+        res.status(200).json(results);
+    });
+}
+
+// Metodo para contar los exámenes completados
+exports.contarExamenesCompletados = (req, res) => {
+    Examen.contarExamenesCompletados((err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al contar los exámenes completados", error: err });
+        }
+
+        res.status(200).json(results);
+    });
+}
+
+//Metodo para contar los pacientes con examen
+exports.contarPacientesConExamen = (req, res) => {
+    Examen.contarPacientesConExamen((err, total) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error al contar los pacientes con examen' });
+        }
+       res.status(200).json({ total_pacientes: total });
+
     });
 };
