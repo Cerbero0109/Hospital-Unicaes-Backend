@@ -59,40 +59,41 @@ Stock.listarStockPorMedicamento = (idMedicamento, callback) => {
   });
 };
 
-// Insertar nuevo registro de stock
 Stock.insertarStock = (stockData, callback) => {
   const sql = `
     INSERT INTO stock (
-      id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
-    ) VALUES (?, ?, ?, ?, ?)
+      id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, 
+      cantidad_disponible, cantidad_inicial
+    ) VALUES (?, ?, ?, ?, ?, ?)
   `;
-  
-  const { 
+
+  const {
     id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
   } = stockData;
 
   db.query(sql, [
-    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
+    id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad,
+    cantidad_disponible, cantidad_disponible // cantidad_inicial = cantidad_disponible
   ], (err, result) => {
     if (err) {
       console.error("Error al insertar el stock:", err);
       return callback(err, null);
     }
-    
+
     // Si se insertó correctamente, verificar si es necesario registrar en ingreso_medicamento
     if (stockData.registrar_ingreso && result.insertId) {
       const ingresoData = {
         id_stock: result.insertId,
+        id_usuario: stockData.id_usuario,
         tipo_ingreso: stockData.tipo_ingreso || 'compra',
         precio_unitario: stockData.precio_unitario || 0,
         costo_unitario: stockData.costo_unitario || 0,
         observaciones: stockData.observaciones || null
       };
-      
+
       Stock.registrarIngresoMedicamento(ingresoData, (errorIngreso) => {
         if (errorIngreso) {
           console.error("Error al registrar el ingreso del medicamento:", errorIngreso);
-          // Aunque falle el registro del ingreso, el stock ya se añadió
         }
         return callback(null, result);
       });
@@ -101,7 +102,6 @@ Stock.insertarStock = (stockData, callback) => {
     }
   });
 };
-
 // Actualizar stock
 Stock.actualizarStock = (id, stockData, callback) => {
   const sql = `
@@ -110,8 +110,8 @@ Stock.actualizarStock = (id, stockData, callback) => {
         fecha_caducidad = ?, cantidad_disponible = ?
     WHERE id_stock = ?
   `;
-  
-  const { 
+
+  const {
     id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
   } = stockData;
 
@@ -184,7 +184,8 @@ Stock.verificarStockProximoVencer = (diasLimite, callback) => {
 // Listar lotes agotados
 Stock.listarLotesAgotados = (callback) => {
   const sql = `
-    SELECT s.*, m.codigo, m.nombre, m.concentracion
+    SELECT s.*, m.codigo, m.nombre, m.concentracion,
+           (s.cantidad_inicial - s.cantidad_disponible) as cantidad_consumida
     FROM stock s
     JOIN medicamento m ON s.id_medicamento = m.id_medicamento
     WHERE s.estado = 'agotado'
@@ -206,16 +207,16 @@ Stock.listarLotesAgotados = (callback) => {
 Stock.registrarIngresoMedicamento = (ingresoData, callback) => {
   const sql = `
     INSERT INTO ingreso_medicamento (
-      id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
-    ) VALUES (?, ?, ?, ?, ?)
+      id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+    ) VALUES (?, ?, ?, ?, ?, ?)
   `;
-  
-  const { 
-    id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+
+  const {
+    id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones
   } = ingresoData;
 
   db.query(sql, [
-    id_stock, tipo_ingreso, precio_unitario, costo_unitario, observaciones
+    id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones
   ], (err, result) => {
     if (err) {
       console.error("Error al registrar el ingreso de medicamento:", err);
