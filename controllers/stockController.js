@@ -68,6 +68,14 @@ exports.obtenerStockPorMedicamento = (req, res) => {
 
 // Crear nuevo registro de stock
 exports.crearStock = (req, res) => {
+  // Primero verifica que el usuario esté autenticado
+  if (!req.session.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Usuario no autenticado o sesión expirada"
+    });
+  }
+
   // Validar datos de entrada
   const { 
     id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, 
@@ -100,6 +108,12 @@ exports.crearStock = (req, res) => {
     });
   }
 
+  // Obtener el ID del usuario explícitamente de la sesión
+  const id_usuario = req.session.user.id_usuario;
+  
+  console.log('ID de usuario en controlador:', id_usuario);
+  console.log('Datos de usuario en sesión:', req.session.user);
+
   const stockData = {
     id_medicamento,
     numero_lote,
@@ -107,6 +121,7 @@ exports.crearStock = (req, res) => {
     fecha_caducidad,
     cantidad_disponible,
     registrar_ingreso: true,
+    id_usuario, // Incluir aquí el ID del usuario obtenido de la sesión
     tipo_ingreso: tipo_ingreso || 'compra',
     precio_unitario: precio_unitario || 0,
     costo_unitario: costo_unitario || 0,
@@ -115,6 +130,7 @@ exports.crearStock = (req, res) => {
 
   Stock.insertarStock(stockData, (err, result) => {
     if (err) {
+      console.error("Error completo al crear stock:", err);
       return res.status(500).json({ 
         success: false,
         message: "Error al crear el registro de stock", 

@@ -71,6 +71,10 @@ Stock.insertarStock = (stockData, callback) => {
     id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad, cantidad_disponible
   } = stockData;
 
+  // Agregar log para depuración
+  console.log("stockData completo:", stockData);
+  console.log("ID de usuario antes de insertar:", stockData.id_usuario);
+
   db.query(sql, [
     id_medicamento, numero_lote, fecha_fabricacion, fecha_caducidad,
     cantidad_disponible, cantidad_disponible // cantidad_inicial = cantidad_disponible
@@ -84,12 +88,15 @@ Stock.insertarStock = (stockData, callback) => {
     if (stockData.registrar_ingreso && result.insertId) {
       const ingresoData = {
         id_stock: result.insertId,
-        id_usuario: stockData.id_usuario,
+        id_usuario: stockData.id_usuario, // Asegúrate de que este valor no sea null
         tipo_ingreso: stockData.tipo_ingreso || 'compra',
         precio_unitario: stockData.precio_unitario || 0,
         costo_unitario: stockData.costo_unitario || 0,
         observaciones: stockData.observaciones || null
       };
+
+      // Agregar log para depuración
+      console.log("ingresoData antes de registrar:", ingresoData);
 
       Stock.registrarIngresoMedicamento(ingresoData, (errorIngreso) => {
         if (errorIngreso) {
@@ -215,6 +222,11 @@ Stock.registrarIngresoMedicamento = (ingresoData, callback) => {
     id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones
   } = ingresoData;
 
+  // Agregar log para depuración
+  console.log("Datos para ingreso medicamento:", { 
+    id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones 
+  });
+
   db.query(sql, [
     id_stock, id_usuario, tipo_ingreso, precio_unitario, costo_unitario, observaciones
   ], (err, result) => {
@@ -222,9 +234,11 @@ Stock.registrarIngresoMedicamento = (ingresoData, callback) => {
       console.error("Error al registrar el ingreso de medicamento:", err);
       return callback(err);
     }
+    console.log("Ingreso de medicamento registrado correctamente:", result);
     return callback(null);
   });
-};
+};;
+
 
 // Listar ingresos de medicamentos
 Stock.listarIngresosMedicamentos = (callback) => {

@@ -35,16 +35,37 @@ Despacho.listarRecetasPendientes = (callback) => {
   });
 };
 
-// Listar historial de despachos
-Despacho.listarHistorialDespachos = (page, limit, callback) => {
+// Listar historial de despachos con filtros
+Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
   const offset = (page - 1) * limit;
-  
+
+  let whereClause = '';
+  const queryParams = [];
+
+  // Construir filtros
+  const conditions = [];
+
+  if (filtros && filtros.estado) {
+    conditions.push('d.estado = ?');
+    queryParams.push(filtros.estado);
+  }
+
+  if (filtros && filtros.fechaInicio && filtros.fechaFin) {
+    conditions.push('DATE(d.fecha_despacho) BETWEEN ? AND ?');
+    queryParams.push(filtros.fechaInicio, filtros.fechaFin);
+  }
+
+  if (conditions.length > 0) {
+    whereClause = 'WHERE ' + conditions.join(' AND ');
+  }
+
   const sql = `
     SELECT 
       d.id_despacho,
       d.fecha_despacho,
       d.estado AS estado_despacho,
       d.observaciones,
+      d.razon_cancelacion,
       r.id_receta,
       p.id_paciente,
       CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
@@ -52,7 +73,10 @@ Despacho.listarHistorialDespachos = (page, limit, callback) => {
       CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
       um.id_usuario AS id_medico,
       CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
-      GROUP_CONCAT(CONCAT(m.nombre, ' (', dd.cantidad_despachada, ')') SEPARATOR ', ') AS medicamentos
+      CASE 
+        WHEN d.estado = 'cancelado' THEN 'Cancelado'
+        ELSE GROUP_CONCAT(CONCAT(m.nombre, ' (', dd.cantidad_despachada, '/', dr.cantidad, ')') SEPARATOR ', ')
+      END AS medicamentos
     FROM despacho d
     JOIN receta_medica r ON d.id_receta = r.id_receta
     JOIN consulta c ON r.id_consulta = c.id_consulta
@@ -62,20 +86,32 @@ Despacho.listarHistorialDespachos = (page, limit, callback) => {
     LEFT JOIN detalle_despacho dd ON d.id_despacho = dd.id_despacho
     LEFT JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
     LEFT JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+    ${whereClause}
     GROUP BY d.id_despacho
     ORDER BY d.fecha_despacho DESC
     LIMIT ? OFFSET ?
   `;
 
-  db.query(sql, [limit, offset], (err, results) => {
+  // Agregar parámetros para LIMIT y OFFSET
+  queryParams.push(limit, offset);
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       console.error("Error al listar historial de despachos:", err);
       return callback(err, null);
     }
 
-    // Obtener el total de registros para la paginación
-    const countSql = "SELECT COUNT(*) as total FROM despacho";
-    db.query(countSql, (countErr, countResult) => {
+    // Obtener el total de registros con filtros
+    let countSql = `
+      SELECT COUNT(*) as total 
+      FROM despacho d
+      ${whereClause}
+    `;
+
+    // Remover los parámetros de LIMIT y OFFSET para la consulta de conteo
+    const countParams = queryParams.slice(0, -2);
+
+    db.query(countSql, countParams, (countErr, countResult) => {
       if (countErr) {
         console.error("Error al contar despachos:", countErr);
         return callback(countErr, null);
@@ -127,15 +163,23 @@ Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
       return callback(null, null);
     }
 
-    // Obtener detalles de los medicamentos despachados
+    // Si es un despacho cancelado, no necesitamos obtener detalles de medicamentos
+    if (result[0].estado === 'cancelado') {
+      return callback(null, result[0]);
+    }
+
+    // Para despachos completos o parciales, obtener detalles de medicamentos
     const detallesSql = `
       SELECT 
         dd.*,
         dr.id_medicamento,
+        dr.cantidad AS cantidad_requerida,
+        dr.cantidad_despachada AS cantidad_total_despachada,
         dr.dosis,
         dr.frecuencia,
         dr.duracion,
         dr.instrucciones,
+        dr.estado as estado_detalle_receta,
         m.codigo,
         m.nombre AS nombre_medicamento,
         m.concentracion,
@@ -154,9 +198,35 @@ Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
         return callback(detErr, null);
       }
 
+      // Agrupar detalles por medicamento para mejor visualización
+      const medicamentosAgrupados = {};
+      detalles.forEach(detalle => {
+        if (!medicamentosAgrupados[detalle.id_medicamento]) {
+          medicamentosAgrupados[detalle.id_medicamento] = {
+            id_medicamento: detalle.id_medicamento,
+            nombre_medicamento: detalle.nombre_medicamento,
+            concentracion: detalle.concentracion,
+            cantidad_requerida: detalle.cantidad_requerida,
+            cantidad_total_despachada: 0, // Inicializar en 0, vamos a calcular la suma real
+            estado_detalle_receta: detalle.estado_detalle_receta,
+            lotes: []
+          };
+        }
+
+        // Agregar la cantidad despachada al total
+        medicamentosAgrupados[detalle.id_medicamento].cantidad_total_despachada += detalle.cantidad_despachada;
+
+        medicamentosAgrupados[detalle.id_medicamento].lotes.push({
+          id_stock: detalle.id_stock,
+          numero_lote: detalle.numero_lote,
+          cantidad_despachada: detalle.cantidad_despachada,
+          fecha_caducidad: detalle.fecha_caducidad
+        });
+      });
+
       const despacho = {
         ...result[0],
-        detalles: detalles
+        detalles: Object.values(medicamentosAgrupados)
       };
 
       return callback(null, despacho);
@@ -246,6 +316,24 @@ Despacho.crearDespacho = (despachoData, callback) => {
   });
 };
 
+// Crear despacho cancelado (incluye razón de cancelación)
+Despacho.crearDespachoCancelado = (despachoData, callback) => {
+  const { id_receta, id_usuario, estado, observaciones, razon_cancelacion } = despachoData;
+
+  const sql = `
+    INSERT INTO despacho (id_receta, id_usuario, estado, observaciones, razon_cancelacion)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  db.query(sql, [id_receta, id_usuario, estado, observaciones, razon_cancelacion], (err, result) => {
+    if (err) {
+      console.error("Error al crear despacho cancelado:", err);
+      return callback(err, null);
+    }
+    return callback(null, result.insertId);
+  });
+};
+
 // Crear detalle de despacho
 Despacho.crearDetalleDespacho = (detalleData, callback) => {
   const { id_despacho, id_detalle_receta, id_stock, cantidad_despachada } = detalleData;
@@ -291,6 +379,23 @@ Despacho.actualizarStockDespacho = (idStock, cantidadDespachada, callback) => {
       }
       return callback(null, result);
     });
+  });
+};
+
+// Actualizar cantidad despachada en detalle_receta
+Despacho.actualizarCantidadDespachadaDetalleReceta = (idDetalleReceta, cantidadDespachada, callback) => {
+  const sql = `
+    UPDATE detalle_receta 
+    SET cantidad_despachada = cantidad_despachada + ?
+    WHERE id_detalle_receta = ?
+  `;
+
+  db.query(sql, [cantidadDespachada, idDetalleReceta], (err, result) => {
+    if (err) {
+      console.error("Error al actualizar cantidad despachada:", err);
+      return callback(err, null);
+    }
+    return callback(null, result);
   });
 };
 
