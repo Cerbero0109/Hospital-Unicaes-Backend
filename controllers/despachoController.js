@@ -39,6 +39,33 @@ exports.obtenerDetalleReceta = (req, res) => {
   });
 };
 
+// Obtener información completa de receta para despacho (FUNCIÓN CORREGIDA)
+exports.obtenerInformacionCompletaReceta = (req, res) => {
+  const idReceta = req.params.idReceta;
+
+  Despacho.obtenerInformacionCompletaReceta(idReceta, (err, result) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener información completa de receta",
+        error: err
+      });
+    }
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Receta no encontrada"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  });
+};
+
 // Obtener lotes disponibles para un medicamento
 exports.obtenerLotesDisponibles = (req, res) => {
   const idMedicamento = req.params.idMedicamento;
@@ -220,7 +247,7 @@ exports.realizarDespacho = (req, res) => {
 
                   // Actualizar estado del detalle de receta según tipo de despacho
                   const estadoDetalle = tipo_despacho === 'completo' ? 'despachado' : 'despachado_parcial';
-                  
+
                   Despacho.actualizarEstadoDetalleReceta(id_detalle_receta, estadoDetalle, (estadoErr) => {
                     if (estadoErr) {
                       erroresDetalle.push(estadoErr);
@@ -238,7 +265,7 @@ exports.realizarDespacho = (req, res) => {
 
                     // Actualizar estado de la receta
                     const estadoReceta = tipo_despacho === 'completo' ? 'despachada' : 'despachada_parcial';
-                    
+
                     Despacho.actualizarEstadoReceta(id_receta, estadoReceta, (recetaErr) => {
                       if (recetaErr) {
                         return db.rollback(() => {
@@ -265,7 +292,7 @@ exports.realizarDespacho = (req, res) => {
                         res.status(201).json({
                           success: true,
                           message: `Despacho ${tipo_despacho} realizado exitosamente`,
-                          data: { 
+                          data: {
                             id_despacho: idDespacho,
                             tipo: tipo_despacho
                           }
@@ -395,6 +422,95 @@ exports.obtenerDetalleDespacho = (req, res) => {
     res.status(200).json({
       success: true,
       data: result
+    });
+  });
+};
+
+// Obtener estadísticas para el dashboard
+exports.obtenerEstadisticasDashboard = (req, res) => {
+  Despacho.obtenerEstadisticasDashboard((err, result) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener estadísticas del dashboard",
+        error: err
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  });
+};
+
+// Obtener resumen de despachos por período
+exports.obtenerResumenDespachos = (req, res) => {
+  const { fechaInicio, fechaFin } = req.query;
+
+  if (!fechaInicio || !fechaFin) {
+    return res.status(400).json({
+      success: false,
+      message: "Las fechas de inicio y fin son obligatorias"
+    });
+  }
+
+  Despacho.obtenerResumenDespachos(fechaInicio, fechaFin, (err, results) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener resumen de despachos",
+        error: err
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: results
+    });
+  });
+};
+
+// Obtener métricas de rendimiento del despachador
+exports.obtenerMetricasRendimiento = (req, res) => {
+  const { idUsuario, periodo } = req.query;
+  const userId = idUsuario || req.session.user?.id_usuario;
+
+  let fechaInicio;
+  const fechaFin = new Date().toISOString().split('T')[0];
+
+  // Calcular fecha de inicio según el período
+  switch (periodo) {
+    case 'semana':
+      fechaInicio = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      break;
+    case 'mes':
+      fechaInicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+      break;
+    case 'trimestre':
+      fechaInicio = new Date(new Date().getFullYear(), new Date().getMonth() - 2, 1).toISOString().split('T')[0];
+      break;
+    default:
+      fechaInicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  }
+
+  Despacho.obtenerMetricasRendimiento(fechaInicio, fechaFin, userId, (err, results) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener métricas de rendimiento",
+        error: err
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      periodo: {
+        inicio: fechaInicio,
+        fin: fechaFin,
+        tipo: periodo || 'mes'
+      }
     });
   });
 };

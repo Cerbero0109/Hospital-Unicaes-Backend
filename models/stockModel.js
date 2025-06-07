@@ -260,4 +260,24 @@ Stock.listarIngresosMedicamentos = (callback) => {
   });
 };
 
+
+Stock.listarLotesVencidos = (callback) => {
+  const sql = `
+    SELECT s.*, m.codigo, m.nombre, m.concentracion,
+           (s.cantidad_inicial - s.cantidad_disponible) as cantidad_consumida
+    FROM stock s
+    JOIN medicamento m ON s.id_medicamento = m.id_medicamento
+    WHERE s.estado = 'vencido'
+    ORDER BY s.fecha_caducidad DESC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error al listar lotes vencidos:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
 module.exports = Stock;

@@ -13,6 +13,7 @@ Despacho.listarRecetasPendientes = (callback) => {
       r.observaciones,
       c.id_consulta,
       p.id_paciente,
+      p.n_expediente,
       CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
       c.id_usuario AS id_medico,
       CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
@@ -35,7 +36,128 @@ Despacho.listarRecetasPendientes = (callback) => {
   });
 };
 
-// Listar historial de despachos con filtros
+// Obtener detalle de una receta con información completa (actualizado)
+Despacho.obtenerDetalleReceta = (idReceta, callback) => {
+  const sql = `
+    SELECT 
+      dr.id_detalle_receta,
+      dr.id_medicamento,
+      dr.cantidad,
+      dr.cantidad_despachada,
+      dr.dosis,
+      dr.frecuencia,
+      dr.duracion,
+      dr.instrucciones,
+      dr.estado AS estado_detalle,
+      m.codigo,
+      m.nombre AS nombre_medicamento,
+      m.concentracion,
+      m.via_administracion,
+      m.ubicacion_almacen,
+      p.nombre_presentacion,
+      (SELECT SUM(s.cantidad_disponible) 
+       FROM stock s 
+       WHERE s.id_medicamento = m.id_medicamento 
+       AND s.estado = 'activo') AS stock_disponible
+    FROM detalle_receta dr
+    JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+    LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
+    WHERE dr.id_receta = ?
+    ORDER BY dr.id_detalle_receta
+  `;
+
+  db.query(sql, [idReceta], (err, results) => {
+    if (err) {
+      console.error("Error al obtener detalle de receta:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Obtener información completa de receta para despacho (nuevo método)
+Despacho.obtenerInformacionCompletaReceta = (idReceta, callback) => {
+  const sql = `
+    SELECT 
+      r.id_receta,
+      r.fecha_receta,
+      r.estado AS estado_receta,
+      r.observaciones AS observaciones_receta,
+      c.id_consulta,
+      p.id_paciente,
+      p.n_expediente,
+      CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
+      p.dui_paciente,
+      p.sexo_paciente,
+      p.fecha_nacimiento_paciente,
+      c.id_usuario AS id_medico,
+      CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
+      e.nombre_especialidad AS especialidad,
+      um.numero_seguro_social AS codigo_medico
+    FROM receta_medica r
+    JOIN consulta c ON r.id_consulta = c.id_consulta
+    JOIN paciente p ON c.id_paciente = p.id_paciente
+    JOIN usuario um ON c.id_usuario = um.id_usuario
+    LEFT JOIN especialidad e ON um.id_especialidad = e.id_especialidad
+    WHERE r.id_receta = ?
+  `;
+
+  db.query(sql, [idReceta], (err, result) => {
+    if (err) {
+      console.error("Error al obtener información completa de receta:", err);
+      return callback(err, null);
+    }
+
+    if (result.length === 0) {
+      return callback(null, null);
+    }
+
+    // Obtener detalles de medicamentos
+    const detallesSql = `
+      SELECT 
+        dr.id_detalle_receta,
+        dr.id_medicamento,
+        dr.cantidad,
+        dr.cantidad_despachada,
+        dr.dosis,
+        dr.frecuencia,
+        dr.duracion,
+        dr.instrucciones,
+        dr.estado AS estado_detalle,
+        m.codigo,
+        m.nombre AS nombre_medicamento,
+        m.concentracion,
+        m.via_administracion,
+        m.ubicacion_almacen,
+        p.nombre_presentacion,
+        (SELECT SUM(s.cantidad_disponible) 
+         FROM stock s 
+         WHERE s.id_medicamento = m.id_medicamento 
+         AND s.estado = 'activo') AS stock_disponible
+      FROM detalle_receta dr
+      JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+      LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
+      WHERE dr.id_receta = ?
+      ORDER BY dr.id_detalle_receta
+    `;
+
+    db.query(detallesSql, [idReceta], (detErr, detalles) => {
+      if (detErr) {
+        console.error("Error al obtener detalles de medicamentos:", detErr);
+        return callback(detErr, null);
+      }
+
+      const recetaCompleta = {
+        ...result[0],
+        medicamentos: detalles
+      };
+
+      return callback(null, recetaCompleta);
+    });
+  });
+};
+
+// Listar historial de despachos (actualizado para incluir número de expediente)
 Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
   const offset = (page - 1) * limit;
 
@@ -68,6 +190,7 @@ Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
       d.razon_cancelacion,
       r.id_receta,
       p.id_paciente,
+      p.n_expediente,
       CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
       u.id_usuario AS id_despachador,
       CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
@@ -128,7 +251,7 @@ Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
   });
 };
 
-// Obtener detalle de un despacho específico
+// Obtener detalle de un despacho específico (actualizado)
 Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
   const sql = `
     SELECT 
@@ -137,7 +260,9 @@ Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
       r.fecha_receta,
       r.observaciones AS observaciones_receta,
       p.id_paciente,
+      p.n_expediente,
       CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
+      p.dui_paciente,
       u.id_usuario AS id_despachador,
       CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
       um.id_usuario AS id_medico,
@@ -183,13 +308,17 @@ Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
         m.codigo,
         m.nombre AS nombre_medicamento,
         m.concentracion,
+        m.via_administracion,
+        p.nombre_presentacion,
         s.numero_lote,
         s.fecha_caducidad
       FROM detalle_despacho dd
       JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
       JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+      LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
       JOIN stock s ON dd.id_stock = s.id_stock
       WHERE dd.id_despacho = ?
+      ORDER BY dr.id_detalle_receta, s.fecha_caducidad
     `;
 
     db.query(detallesSql, [idDespacho], (detErr, detalles) => {
@@ -206,8 +335,14 @@ Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
             id_medicamento: detalle.id_medicamento,
             nombre_medicamento: detalle.nombre_medicamento,
             concentracion: detalle.concentracion,
+            via_administracion: detalle.via_administracion,
+            nombre_presentacion: detalle.nombre_presentacion,
             cantidad_requerida: detalle.cantidad_requerida,
-            cantidad_total_despachada: 0, // Inicializar en 0, vamos a calcular la suma real
+            dosis: detalle.dosis,
+            frecuencia: detalle.frecuencia,
+            duracion: detalle.duracion,
+            instrucciones: detalle.instrucciones,
+            cantidad_total_despachada: 0,
             estado_detalle_receta: detalle.estado_detalle_receta,
             lotes: []
           };
@@ -430,6 +565,94 @@ Despacho.actualizarEstadoReceta = (idReceta, estado, callback) => {
       return callback(err, null);
     }
     return callback(null, result);
+  });
+};
+
+
+// Obtener estadísticas para el dashboard
+Despacho.obtenerEstadisticasDashboard = (callback) => {
+  const today = new Date().toISOString().split('T')[0];
+  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+  const sql = `
+    SELECT 
+      COUNT(CASE WHEN r.estado = 'pendiente' THEN 1 END) as recetas_pendientes,
+      COUNT(CASE WHEN d.estado IN ('completo', 'parcial') AND DATE(d.fecha_despacho) = ? THEN 1 END) as despachos_hoy,
+      COUNT(CASE WHEN d.estado = 'parcial' AND DATE(d.fecha_despacho) BETWEEN ? AND ? THEN 1 END) as despachos_parciales_mes,
+      COUNT(CASE WHEN d.estado = 'cancelado' AND DATE(d.fecha_despacho) BETWEEN ? AND ? THEN 1 END) as despachos_cancelados_mes
+    FROM receta_medica r
+    LEFT JOIN despacho d ON r.id_receta = d.id_receta
+  `;
+
+  db.query(sql, [today, firstDayOfMonth, today, firstDayOfMonth, today], (err, result) => {
+    if (err) {
+      console.error("Error al obtener estadísticas del dashboard:", err);
+      return callback(err, null);
+    }
+    return callback(null, result[0]);
+  });
+};
+
+// Obtener resumen de despachos por período
+Despacho.obtenerResumenDespachos = (fechaInicio, fechaFin, callback) => {
+  const sql = `
+    SELECT 
+      DATE(d.fecha_despacho) as fecha,
+      COUNT(*) as total_despachos,
+      COUNT(CASE WHEN d.estado = 'completo' THEN 1 END) as despachos_completos,
+      COUNT(CASE WHEN d.estado = 'parcial' THEN 1 END) as despachos_parciales,
+      COUNT(CASE WHEN d.estado = 'cancelado' THEN 1 END) as despachos_cancelados
+    FROM despacho d
+    WHERE DATE(d.fecha_despacho) BETWEEN ? AND ?
+    GROUP BY DATE(d.fecha_despacho)
+    ORDER BY fecha DESC
+  `;
+
+  db.query(sql, [fechaInicio, fechaFin], (err, results) => {
+    if (err) {
+      console.error("Error al obtener resumen de despachos:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Obtener métricas de rendimiento del despachador
+Despacho.obtenerMetricasRendimiento = (fechaInicio, fechaFin, idUsuario, callback) => {
+  let sql = `
+    SELECT 
+      u.nombre,
+      u.apellido,
+      COUNT(*) as total_despachos,
+      COUNT(CASE WHEN d.estado = 'completo' THEN 1 END) as despachos_completos,
+      COUNT(CASE WHEN d.estado = 'parcial' THEN 1 END) as despachos_parciales,
+      COUNT(CASE WHEN d.estado = 'cancelado' THEN 1 END) as despachos_cancelados,
+      ROUND(COUNT(CASE WHEN d.estado = 'completo' THEN 1 END) * 100.0 / COUNT(*), 2) as porcentaje_exito,
+      MIN(d.fecha_despacho) as primer_despacho,
+      MAX(d.fecha_despacho) as ultimo_despacho
+    FROM despacho d
+    JOIN usuario u ON d.id_usuario = u.id_usuario
+    WHERE DATE(d.fecha_despacho) BETWEEN ? AND ?
+  `;
+
+  const params = [fechaInicio, fechaFin];
+
+  if (idUsuario) {
+    sql += ' AND d.id_usuario = ?';
+    params.push(idUsuario);
+  }
+
+  sql += `
+    GROUP BY d.id_usuario, u.nombre, u.apellido
+    ORDER BY total_despachos DESC
+  `;
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error("Error al obtener métricas de rendimiento:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
   });
 };
 

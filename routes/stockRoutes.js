@@ -14,5 +14,6 @@ router.put("/cambiar-estado/:id", authMiddleware, stockController.cambiarEstadoS
 router.get("/proximos-vencer", authMiddleware, stockController.verificarStockProximoVencer);
 router.get("/lotes-agotados", authMiddleware, stockController.listarLotesAgotados);
 router.get("/ingresos", authMiddleware, stockController.listarIngresosMedicamentos);
+router.get("/lotes-vencidos", authMiddleware, stockController.listarLotesVencidos);
 
 module.exports = router;

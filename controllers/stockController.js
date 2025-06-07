@@ -317,3 +317,19 @@ exports.listarIngresosMedicamentos = (req, res) => {
     });
   });
 };
+
+exports.listarLotesVencidos = (req, res) => {
+  Stock.listarLotesVencidos((err, results) => {
+    if (err) {
+      return res.status(500).json({ 
+        success: false,
+        message: "Error al listar los lotes vencidos", 
+        error: err 
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: results
+    });
+  });
+};
