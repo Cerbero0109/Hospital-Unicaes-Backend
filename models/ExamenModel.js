@@ -38,7 +38,7 @@ Examen.PacientesConExamen = (callback) => {
                         p.id_paciente,
                         p.nombre_paciente, 
                         p.apellido_paciente, 
-                        p.dui_paciente, 
+                        p.n_expediente, 
                         p.sexo_paciente, 
                         p.telefono_paciente,
                         MAX(e.fecha_solicitud) AS ultima_fecha_solicitud
@@ -205,7 +205,9 @@ Examen.eliminarResultadoExamen = (id_resultado, callback) => {
 
 // Marcar un examen como completado
 Examen.marcarExamenComoCompletado = (id_examen, callback) => {
-    const sql = `UPDATE examen SET estado = 'completado' WHERE id_examen = ?`;
+    const sql = `UPDATE examen 
+                SET estado = 'completado', fecha_solicitud = NOW() 
+                WHERE id_examen = ?;`;
     db.query(sql, [id_examen], (err, result) => {
         if (err) {
             console.error("model: Error al marcar el examen como completado:", err);
@@ -215,8 +217,7 @@ Examen.marcarExamenComoCompletado = (id_examen, callback) => {
     });
 };
 
-
-//Actualizar el estado de un paciente a inactivo
+// Marcar un paciente como inactivo
 Examen.marcarPacienteComoInactivo = (id_paciente, callback) => {
     const sql = `UPDATE paciente SET estado = 'inactivo' WHERE id_paciente = ?`;
     db.query(sql, [id_paciente], (err, result) => {
@@ -228,13 +229,14 @@ Examen.marcarPacienteComoInactivo = (id_paciente, callback) => {
     });
 };
 
+
 //Mostrar los últimos 5 exámenes para el dashboard
 Examen.listarUltimosExamenes = (callback) => {
     const sql = `SELECT 
                         e.id_examen, 
                         p.nombre_paciente,
                         p.apellido_paciente , 
-                        p.dui_paciente,
+                        p.n_expediente,
                         p.telefono_paciente,
                         t.nombre AS nombre_examen, 
                         e.estado 
@@ -301,5 +303,6 @@ Examen.contarPacientesConExamen = (callback) => {
         return callback(null, results[0].total_pacientes_con_examen);
     });
 };
+
 
 module.exports = Examen;
