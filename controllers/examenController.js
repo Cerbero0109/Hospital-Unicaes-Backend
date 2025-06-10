@@ -121,8 +121,12 @@ exports.eliminarResultadoExamen = (req, res) => {
 // Metodo Update para Marcar un examen como completado
 exports.marcarExamenComoCompletado = (req, res) => {
     const id_examen = req.params.id_examen; // Obtener el id del examen a marcar como completado
+    let nombre_laboratorista = 'Desconocido';
+    if (req.session.user && req.session.user.nombre && req.session.user.apellido) {
+        nombre_laboratorista = `${req.session.user.nombre} ${req.session.user.apellido}`;
+    }
 
-    Examen.marcarExamenComoCompletado(id_examen, (err, result) => {
+    Examen.marcarExamenComoCompletado(id_examen, nombre_laboratorista, (err, result) => { 
         if (err) {
             return res.status(500).json({ message: "Error al marcar el examen como completado", error: err });
         }

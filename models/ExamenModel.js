@@ -1,3 +1,5 @@
+// models/ExamenModel.js
+
 const db = require('../database/conexion')
 
 
@@ -7,14 +9,15 @@ const Examen = {};
 // Listar Examenes Pendientes
 Examen.listarExamenesPendientes = (callback) => {
     const sql = `SELECT e.id_examen,
-                        p.id_paciente,
-                        p.nombre_paciente, 
-                        p.apellido_paciente,
-                        u.nombre AS doctor_nombre, 
-                        u.apellido AS doctor_apellido,
-                        t.nombre AS examen_nombre, 
-                        m.nombre_muestra,
-                        e.fecha_solicitud
+                            p.id_paciente,
+                            p.n_expediente,
+                            p.nombre_paciente,
+                            p.apellido_paciente,
+                            u.nombre AS doctor_nombre,
+                            u.apellido AS doctor_apellido,
+                            t.nombre AS examen_nombre,
+                            m.nombre_muestra,
+                            e.fecha_solicitud
                 FROM paciente p
                 JOIN muestra m ON p.id_paciente=m.id_paciente
                 JOIN examen e ON e.id_muestra = m.id_muestra
@@ -31,29 +34,29 @@ Examen.listarExamenesPendientes = (callback) => {
     });
 };
 
-
 // Listar Pacientes con Examenes
 Examen.PacientesConExamen = (callback) => {
-    const sql = `SELECT 
-                        p.id_paciente,
-                        p.nombre_paciente, 
-                        p.apellido_paciente, 
-                        p.n_expediente, 
-                        p.sexo_paciente, 
-                        p.telefono_paciente,
-                        MAX(e.fecha_solicitud) AS ultima_fecha_solicitud
-                    FROM paciente p
-                    JOIN muestra m ON p.id_paciente = m.id_paciente
-                    JOIN examen e ON e.id_muestra = m.id_muestra
-                    WHERE p.estado = 'activo'
-                    GROUP BY 
-                        p.id_paciente, 
-                        p.nombre_paciente, 
-                        p.apellido_paciente, 
-                        p.dui_paciente, 
-                        p.sexo_paciente, 
-                        p.telefono_paciente
-                    ORDER BY ultima_fecha_solicitud DESC;`;
+    const sql = `SELECT
+                            p.id_paciente,
+                            p.nombre_paciente,
+                            p.apellido_paciente,
+                            p.n_expediente,
+                            p.sexo_paciente,
+                            p.telefono_paciente,
+                            MAX(e.fecha_solicitud) AS ultima_fecha_solicitud
+                        FROM paciente p
+                        JOIN muestra m ON p.id_paciente = m.id_paciente
+                        JOIN examen e ON e.id_muestra = m.id_muestra
+                        WHERE p.estado = 'activo'
+                        GROUP BY
+                            p.id_paciente,
+                            p.nombre_paciente,
+                            p.n_expediente,
+                            p.apellido_paciente,
+                            p.dui_paciente,
+                            p.sexo_paciente,
+                            p.telefono_paciente
+                        ORDER BY ultima_fecha_solicitud DESC;`;
 
     db.query(sql, (err, results) => {
         if (err) {
@@ -68,15 +71,15 @@ Examen.PacientesConExamen = (callback) => {
 
 // Mostrar Historial de Examenes por Paciente
 Examen.historialExamenesPorPaciente = (id_paciente, callback) => {
-    const sql = `SELECT 
-                    e.id_examen,
-                    t.nombre AS nombre_examen,
-                    e.fecha_solicitud,
-                    e.estado
-                FROM examen e
-                JOIN tipo_examen t ON t.id_tipo_examen = e.id_tipo_examen  
-                JOIN muestra m ON m.id_muestra = e.id_muestra
-                WHERE m.id_paciente = ?;`;
+    const sql = `SELECT
+                            e.id_examen,
+                            t.nombre AS nombre_examen,
+                            e.fecha_solicitud,
+                            e.estado
+                        FROM examen e
+                        JOIN tipo_examen t ON t.id_tipo_examen = e.id_tipo_examen
+                        JOIN muestra m ON m.id_muestra = e.id_muestra
+                        WHERE m.id_paciente = ?;`;
 
     db.query(sql, [id_paciente], (err, results) => {
         if (err) {
@@ -91,23 +94,24 @@ Examen.historialExamenesPorPaciente = (id_paciente, callback) => {
 
 // Mostrar Resultados de Examen por ID
 Examen.mostrarResultadosExamen = (id_examen, callback) => {
-    const sql = `SELECT 
-                    p.nombre_paciente, 
-                    p.apellido_paciente, 
-                    t.nombre AS nombre_examen, 
-                    m.nombre_muestra,
-                    COALESCE(r.id_resultado, 'Esperando un ID') AS id_resultado,
-                    COALESCE(r.nombre_parametro, 'Esperando resultados') AS nombre_parametro,
-                    COALESCE(r.valor, 'Esperando valor') AS valor,
-                    COALESCE(r.unidad, 'Esperando unidad') AS unidad,
-                    COALESCE(r.rango_referencia, 'Esperando rango') AS rango_referencia
-                FROM examen e
-                JOIN tipo_examen t ON e.id_tipo_examen = t.id_tipo_examen
-                JOIN muestra m ON e.id_muestra = m.id_muestra
-                JOIN paciente p ON m.id_paciente = p.id_paciente
-                LEFT JOIN resultados r ON r.id_examen = e.id_examen
-                WHERE e.id_examen = ?;
-                `;
+    const sql = `SELECT
+                            p.n_expediente,
+                            p.nombre_paciente,
+                            p.apellido_paciente,
+                            t.nombre AS nombre_examen,
+                            m.nombre_muestra,
+                            COALESCE(r.id_resultado, 'Esperando un ID') AS id_resultado,
+                            COALESCE(r.nombre_parametro, 'Esperando resultados') AS nombre_parametro,
+                            COALESCE(r.valor, 'Esperando valor') AS valor,
+                            COALESCE(r.unidad, 'Esperando unidad') AS unidad,
+                            COALESCE(r.rango_referencia, 'Esperando rango') AS rango_referencia
+                        FROM examen e
+                        JOIN tipo_examen t ON e.id_tipo_examen = t.id_tipo_examen
+                        JOIN muestra m ON e.id_muestra = m.id_muestra
+                        JOIN paciente p ON m.id_paciente = p.id_paciente
+                        LEFT JOIN resultados r ON r.id_examen = e.id_examen
+                        WHERE e.id_examen = ?;
+                        `;
 
     db.query(sql, [id_examen], (err, results) => {
         if (err) {
@@ -122,20 +126,22 @@ Examen.mostrarResultadosExamen = (id_examen, callback) => {
 //Listar Examenes Completados
 Examen.listarExamenesCompletados = (callback) => {
     const sql = `SELECT e.id_examen,
-                        p.id_paciente,
-                        p.nombre_paciente, 
-                        p.apellido_paciente,
-                        u.nombre AS doctor_nombre, 
-                        u.apellido AS doctor_apellido,
-                        t.nombre AS examen_nombre, 
-                        m.nombre_muestra,
-                        e.fecha_solicitud
-                        FROM paciente p
-                        JOIN muestra m ON p.id_paciente=m.id_paciente
-                        JOIN examen e ON e.id_muestra = m.id_muestra
-                        JOIN usuario u ON e.id_usuario = u.id_usuario
-                        JOIN tipo_examen t ON e.id_tipo_examen= t.id_tipo_examen
-                        WHERE e.estado = 'completado';`;
+                            p.id_paciente,
+                            p.n_expediente,
+                            p.nombre_paciente,
+                            p.apellido_paciente,
+                            u.nombre AS doctor_nombre,
+                            u.apellido AS doctor_apellido,
+                            t.nombre AS examen_nombre,
+                            m.nombre_muestra,
+                            e.fecha_solicitud,
+                            e.nombre_laboratorista -- <--- ¡AÑADIR ESTA LÍNEA!
+                            FROM paciente p
+                            JOIN muestra m ON p.id_paciente=m.id_paciente
+                            JOIN examen e ON e.id_muestra = m.id_muestra
+                            JOIN usuario u ON e.id_usuario = u.id_usuario
+                            JOIN tipo_examen t ON e.id_tipo_examen= t.id_tipo_examen
+                            WHERE e.estado = 'completado';`;
 
     db.query(sql, (err, results) => {
         if (err) {
@@ -149,7 +155,7 @@ Examen.listarExamenesCompletados = (callback) => {
 // Crear un nuevo resultado de examen
 Examen.crearResultadoExamen = (id_examen, nuevoResultado, callback) => {
     const sql = `INSERT INTO resultados (id_examen, nombre_parametro, valor, unidad, rango_referencia)
-                  VALUES (?, ?, ?, ?, ?)`;
+                    VALUES (?, ?, ?, ?, ?)`;
     db.query(sql, [id_examen, nuevoResultado.nombre_parametro, nuevoResultado.valor, nuevoResultado.unidad, nuevoResultado.rango_referencia], (err, result) => {
         if (err) {
             console.error("model: Error al crear el resultado del examen:", err);
@@ -162,11 +168,11 @@ Examen.crearResultadoExamen = (id_examen, nuevoResultado, callback) => {
 // Actualizar un resultado de examen existente
 Examen.actualizarResultadoExamen = (id_resultado, resultadoActualizado, callback) => {
     const sql = `UPDATE resultados
-                  SET nombre_parametro = ?,
-                      valor = ?,
-                      unidad = ?,
-                      rango_referencia = ?
-                  WHERE id_resultado = ?`;
+                    SET nombre_parametro = ?,
+                        valor = ?,
+                        unidad = ?,
+                        rango_referencia = ?
+                    WHERE id_resultado = ?`;
     db.query(sql, [resultadoActualizado.nombre_parametro, resultadoActualizado.valor, resultadoActualizado.unidad, resultadoActualizado.rango_referencia, id_resultado], (err, result) => {
         if (err) {
             console.error("model: Error al actualizar el resultado del examen:", err);
@@ -179,8 +185,8 @@ Examen.actualizarResultadoExamen = (id_resultado, resultadoActualizado, callback
 // Actualizar el estado de un examen a inactivo
 Examen.marcarExamenComoInactivo = (id_examen, callback) => {
     const sql = `UPDATE examen
-                    SET estado = 'inactivo'
-                    WHERE id_examen = ?`;
+                        SET estado = 'inactivo'
+                        WHERE id_examen = ?`;
     db.query(sql, [id_examen], (err, result) => {
         if (err) {
             console.error("model: Error al actualizar el estado del examen a inactivo:", err);
@@ -192,8 +198,8 @@ Examen.marcarExamenComoInactivo = (id_examen, callback) => {
 
 // Actualizar el estado de un resultado de examen a inactivo
 Examen.eliminarResultadoExamen = (id_resultado, callback) => {
-    const sql = `DELETE FROM resultados 
-                    WHERE id_resultado = ?`;
+    const sql = `DELETE FROM resultados
+                        WHERE id_resultado = ?`;
     db.query(sql, [id_resultado], (err, result) => {
         if (err) {
             console.error("model: Error al actualizar el estado del resultado del examen:", err);
@@ -204,11 +210,11 @@ Examen.eliminarResultadoExamen = (id_resultado, callback) => {
 };
 
 // Marcar un examen como completado
-Examen.marcarExamenComoCompletado = (id_examen, callback) => {
-    const sql = `UPDATE examen 
-                SET estado = 'completado', fecha_solicitud = NOW() 
-                WHERE id_examen = ?;`;
-    db.query(sql, [id_examen], (err, result) => {
+Examen.marcarExamenComoCompletado = (id_examen, nombre_laboratorista, callback) => {
+    const sql = `UPDATE examen
+                    SET estado = 'completado', fecha_solicitud = NOW(), nombre_laboratorista = ?
+                    WHERE id_examen = ?;`;
+    db.query(sql, [nombre_laboratorista, id_examen], (err, result) => {
         if (err) {
             console.error("model: Error al marcar el examen como completado:", err);
             return callback(err, null);
@@ -232,19 +238,19 @@ Examen.marcarPacienteComoInactivo = (id_paciente, callback) => {
 
 //Mostrar los últimos 5 exámenes para el dashboard
 Examen.listarUltimosExamenes = (callback) => {
-    const sql = `SELECT 
-                        e.id_examen, 
-                        p.nombre_paciente,
-                        p.apellido_paciente , 
-                        p.n_expediente,
-                        p.telefono_paciente,
-                        t.nombre AS nombre_examen, 
-                        e.estado 
-                    FROM examen e
-                    JOIN muestra m ON m.id_muestra = e.id_muestra
-                    JOIN paciente p ON p.id_paciente = m.id_paciente
-                    JOIN tipo_examen t ON e.id_tipo_examen = t.id_tipo_examen
-                    ORDER BY e.fecha_solicitud DESC LIMIT 5;`;
+    const sql = `SELECT
+                            e.id_examen,
+                            p.nombre_paciente,
+                            p.apellido_paciente ,
+                            p.n_expediente,
+                            p.telefono_paciente,
+                            t.nombre AS nombre_examen,
+                            e.estado
+                        FROM examen e
+                        JOIN muestra m ON m.id_muestra = e.id_muestra
+                        JOIN paciente p ON p.id_paciente = m.id_paciente
+                        JOIN tipo_examen t ON e.id_tipo_examen = t.id_tipo_examen
+                        ORDER BY e.fecha_solicitud DESC LIMIT 5;`;
 
     db.query(sql, (err, results) => {
         if (err) {
@@ -289,11 +295,11 @@ Examen.contarExamenesCompletados = (callback) => {
 
 //Contar Pacientes con Examen
 Examen.contarPacientesConExamen = (callback) => {
-    const sql = `SELECT COUNT(DISTINCT p.id_paciente) AS total_pacientes_con_examen 
-                 FROM paciente p 
-                 JOIN muestra m ON p.id_paciente = m.id_paciente 
-                 JOIN examen e ON e.id_muestra = m.id_muestra 
-                 WHERE p.estado = 'activo';`;
+    const sql = `SELECT COUNT(DISTINCT p.id_paciente) AS total_pacientes_con_examen
+                    FROM paciente p
+                    JOIN muestra m ON p.id_paciente = m.id_paciente
+                    JOIN examen e ON e.id_muestra = m.id_muestra
+                    WHERE p.estado = 'activo';`;
 
     db.query(sql, (err, results) => {
         if (err) {
