@@ -14,6 +14,7 @@ const consultaRoutes = require("./routes/consultaRoutes");
 const detalleConsultaRoutes = require("./routes/detalleConsultaRoutes");
 const historialMedicoRoutes = require("./routes/historialMedicoRoutes");
 const examenRoutes = require("./routes/examenesRoutes");
+const plantillaExamenRoutes = require("./routes/plantillaExamenRoutes");
 
 // Middlewares
 const { verificarNotificaciones } = require("./middlewares/notificacionesMiddleware");
@@ -63,6 +64,7 @@ app.use("/consultas", consultaRoutes);
 app.use("/detalles-consultas", detalleConsultaRoutes);
 app.use("/historiales-medicos", historialMedicoRoutes);
 app.use("/examenes", examenRoutes);
+app.use("/plantillas-examen", plantillaExamenRoutes);
 
 // Rutas Modulo Farmacia 
 app.use("/categorias-medicamento", categoriaMedicamentoRoutes);

@@ -195,3 +195,125 @@ exports.contarPacientesConExamen = (req, res) => {
 
     });
 };
+
+// ========== CONTROLADORES PARA TIPOS DE EXAMEN ==========
+
+// Listar todos los tipos de examen
+exports.listarTiposExamen = (req, res) => {
+    Examen.listarTiposExamen((err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al listar los tipos de examen", error: err });
+        }
+        res.status(200).json(results);
+    });
+};
+
+// Obtener tipo de examen por ID
+exports.obtenerTipoExamenPorId = (req, res) => {
+    const id_tipo_examen = req.params.id_tipo_examen;
+    
+    Examen.obtenerTipoExamenPorId(id_tipo_examen, (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al obtener el tipo de examen", error: err });
+        }
+        if (!result) {
+            return res.status(404).json({ message: "Tipo de examen no encontrado" });
+        }
+        res.status(200).json(result);
+    });
+};
+
+// Crear nuevo tipo de examen
+exports.crearTipoExamen = (req, res) => {
+    const nuevoTipoExamen = req.body;
+    
+    // Validaciones básicas
+    if (!nuevoTipoExamen.nombre || !nuevoTipoExamen.nombre.trim()) {
+        return res.status(400).json({ message: "El nombre del tipo de examen es requerido" });
+    }
+    
+    // Verificar si ya existe un tipo de examen con el mismo nombre
+    Examen.verificarNombreTipoExamen(nuevoTipoExamen.nombre.trim(), null, (err, existe) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al verificar el nombre", error: err });
+        }
+        
+        if (existe) {
+            return res.status(400).json({ message: "Ya existe un tipo de examen con ese nombre" });
+        }
+        
+        // Proceder con la creación
+        Examen.crearTipoExamen(nuevoTipoExamen, (err, result) => {
+            if (err) {
+                return res.status(500).json({ message: "Error al crear el tipo de examen", error: err });
+            }
+            res.status(201).json({ 
+                message: "Tipo de examen creado exitosamente", 
+                id_tipo_examen: result.insertId 
+            });
+        });
+    });
+};
+
+// Actualizar tipo de examen
+exports.actualizarTipoExamen = (req, res) => {
+    const id_tipo_examen = req.params.id_tipo_examen;
+    const tipoExamenActualizado = req.body;
+    
+    // Validaciones básicas
+    if (!tipoExamenActualizado.nombre || !tipoExamenActualizado.nombre.trim()) {
+        return res.status(400).json({ message: "El nombre del tipo de examen es requerido" });
+    }
+    
+    // Verificar si ya existe un tipo de examen con el mismo nombre (excluyendo el actual)
+    Examen.verificarNombreTipoExamen(tipoExamenActualizado.nombre.trim(), id_tipo_examen, (err, existe) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al verificar el nombre", error: err });
+        }
+        
+        if (existe) {
+            return res.status(400).json({ message: "Ya existe un tipo de examen con ese nombre" });
+        }
+        
+        // Proceder con la actualización
+        Examen.actualizarTipoExamen(id_tipo_examen, tipoExamenActualizado, (err, result) => {
+            if (err) {
+                return res.status(500).json({ message: "Error al actualizar el tipo de examen", error: err });
+            }
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ message: "Tipo de examen no encontrado" });
+            }
+            res.status(200).json({ message: "Tipo de examen actualizado exitosamente" });
+        });
+    });
+};
+
+// Eliminar tipo de examen
+exports.eliminarTipoExamen = (req, res) => {
+    const id_tipo_examen = req.params.id_tipo_examen;
+    
+    Examen.eliminarTipoExamen(id_tipo_examen, (err, result) => {
+        if (err) {
+            if (err.message.includes('exámenes asociados')) {
+                return res.status(400).json({ message: err.message });
+            }
+            return res.status(500).json({ message: "Error al eliminar el tipo de examen", error: err });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Tipo de examen no encontrado" });
+        }
+        res.status(200).json({ message: "Tipo de examen eliminado exitosamente" });
+    });
+};
+
+// Contar plantillas por tipo de examen
+exports.contarPlantillasPorTipo = (req, res) => {
+    const id_tipo_examen = req.params.id_tipo_examen;
+    
+    Examen.contarPlantillasPorTipo(id_tipo_examen, (err, count) => {
+        if (err) {
+            return res.status(500).json({ message: "Error al contar plantillas", error: err });
+        }
+        res.status(200).json({ count });
+    });
+};

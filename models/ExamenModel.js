@@ -309,6 +309,118 @@ Examen.contarPacientesConExamen = (callback) => {
         return callback(null, results[0].total_pacientes_con_examen);
     });
 };
+// ========== FUNCIONES PARA TIPOS DE EXAMEN ==========
 
+// Listar todos los tipos de examen
+Examen.listarTiposExamen = (callback) => {
+    const sql = `SELECT id_tipo_examen, nombre, descripcion FROM tipo_examen ORDER BY nombre ASC`;
+
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("model: Error al listar los tipos de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, results);
+    });
+};
+
+// Obtener tipo de examen por ID
+Examen.obtenerTipoExamenPorId = (id_tipo_examen, callback) => {
+    const sql = `SELECT id_tipo_examen, nombre, descripcion FROM tipo_examen WHERE id_tipo_examen = ?`;
+
+    db.query(sql, [id_tipo_examen], (err, results) => {
+        if (err) {
+            console.error("model: Error al obtener el tipo de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, results[0]);
+    });
+};
+
+// Crear nuevo tipo de examen
+Examen.crearTipoExamen = (nuevoTipoExamen, callback) => {
+    const sql = `INSERT INTO tipo_examen (nombre, descripcion) VALUES (?, ?)`;
+
+    db.query(sql, [nuevoTipoExamen.nombre, nuevoTipoExamen.descripcion], (err, result) => {
+        if (err) {
+            console.error("model: Error al crear el tipo de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Actualizar tipo de examen
+Examen.actualizarTipoExamen = (id_tipo_examen, tipoExamenActualizado, callback) => {
+    const sql = `UPDATE tipo_examen SET nombre = ?, descripcion = ? WHERE id_tipo_examen = ?`;
+
+    db.query(sql, [tipoExamenActualizado.nombre, tipoExamenActualizado.descripcion, id_tipo_examen], (err, result) => {
+        if (err) {
+            console.error("model: Error al actualizar el tipo de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, result);
+    });
+};
+
+// Eliminar tipo de examen (verificar si no tiene exámenes asociados)
+Examen.eliminarTipoExamen = (id_tipo_examen, callback) => {
+    // Primero verificar si hay exámenes asociados
+    const sqlVerificar = `SELECT COUNT(*) as count FROM examen WHERE id_tipo_examen = ?`;
+
+    db.query(sqlVerificar, [id_tipo_examen], (err, results) => {
+        if (err) {
+            console.error("model: Error al verificar exámenes asociados:", err);
+            return callback(err, null);
+        }
+
+        if (results[0].count > 0) {
+            return callback(new Error('No se puede eliminar el tipo de examen porque tiene exámenes asociados'), null);
+        }
+
+        // Si no hay exámenes asociados, proceder con la eliminación
+        const sqlEliminar = `DELETE FROM tipo_examen WHERE id_tipo_examen = ?`;
+
+        db.query(sqlEliminar, [id_tipo_examen], (err, result) => {
+            if (err) {
+                console.error("model: Error al eliminar el tipo de examen:", err);
+                return callback(err, null);
+            }
+            return callback(null, result);
+        });
+    });
+};
+
+// Verificar si existe un tipo de examen con el mismo nombre
+Examen.verificarNombreTipoExamen = (nombre, id_tipo_examen = null, callback) => {
+    let sql = `SELECT COUNT(*) as count FROM tipo_examen WHERE nombre = ?`;
+    let params = [nombre];
+
+    if (id_tipo_examen) {
+        sql += ` AND id_tipo_examen != ?`;
+        params.push(id_tipo_examen);
+    }
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error("model: Error al verificar nombre del tipo de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, results[0].count > 0);
+    });
+};
+
+// Contar plantillas por tipo de examen
+Examen.contarPlantillasPorTipo = (id_tipo_examen, callback) => {
+    const sql = `SELECT COUNT(*) as count FROM plantilla_examen WHERE id_tipo_examen = ? AND estado = 'activa'`;
+
+    db.query(sql, [id_tipo_examen], (err, results) => {
+        if (err) {
+            console.error("model: Error al contar plantillas del tipo de examen:", err);
+            return callback(err, null);
+        }
+        return callback(null, results[0].count);
+    });
+};
 
 module.exports = Examen;

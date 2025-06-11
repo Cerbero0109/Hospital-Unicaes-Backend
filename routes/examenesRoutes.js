@@ -31,5 +31,13 @@ router.put('/completar/:id_examen', authMiddleware, examenController.marcarExame
 //Ruta para marcar un paciente como inactivo
 router.put('/paciente-inactivo/:id_paciente', authMiddleware, examenController.marcarPacienteComoInactivo);
 
+// Rutas para gestión de tipos de examen
+router.get('/tipos-examen', authMiddleware, examenController.listarTiposExamen);
+router.get('/tipos-examen/:id_tipo_examen', authMiddleware, examenController.obtenerTipoExamenPorId);
+router.post('/tipos-examen', authMiddleware, examenController.crearTipoExamen);
+router.put('/tipos-examen/:id_tipo_examen', authMiddleware, examenController.actualizarTipoExamen);
+router.delete('/tipos-examen/:id_tipo_examen', authMiddleware, examenController.eliminarTipoExamen);
+router.get('/tipos-examen/:id_tipo_examen/plantillas-count', authMiddleware, examenController.contarPlantillasPorTipo);
+
 
 module.exports = router;

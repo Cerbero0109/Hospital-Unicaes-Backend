@@ -6,7 +6,7 @@ const db = mysql.createConnection({
     host: "localhost",
     user: "root",
     password: "",
-    database: "hospital_unicaes"
+    database: "hospital_unicaesv3"
 });
 
 
