@@ -1,4 +1,3 @@
-//MODULO FARMACIA
 const Despacho = require("../models/despachoModel");
 const db = require("../database/conexion");
 
@@ -39,7 +38,7 @@ exports.obtenerDetalleReceta = (req, res) => {
   });
 };
 
-// Obtener información completa de receta para despacho (FUNCIÓN CORREGIDA)
+// Obtener información completa de receta para despacho
 exports.obtenerInformacionCompletaReceta = (req, res) => {
   const idReceta = req.params.idReceta;
 
@@ -85,7 +84,7 @@ exports.obtenerLotesDisponibles = (req, res) => {
   });
 };
 
-// Realizar despacho (completo, parcial o cancelado)
+// Realizar despacho (completo, parcial o cancelado) - CORREGIDO
 exports.realizarDespacho = (req, res) => {
   const { id_receta, tipo_despacho, detalles, observaciones, razon_cancelacion } = req.body;
 
@@ -99,7 +98,7 @@ exports.realizarDespacho = (req, res) => {
     });
   }
 
-  // Si es una cancelación, no necesitamos procesar detalles
+  // Si es una cancelación, cancelar TODOS los detalles de la receta
   if (tipo_despacho === 'cancelado') {
     if (!razon_cancelacion || razon_cancelacion.trim() === '') {
       return res.status(400).json({
@@ -108,34 +107,85 @@ exports.realizarDespacho = (req, res) => {
       });
     }
 
-    // Crear registro de despacho cancelado
-    const despachoData = {
-      id_receta,
-      id_usuario,
-      estado: 'cancelado',
-      observaciones,
-      razon_cancelacion
-    };
-
-    return Despacho.crearDespachoCancelado(despachoData, (err, idDespacho) => {
+    return db.beginTransaction((err) => {
       if (err) {
         return res.status(500).json({
           success: false,
-          message: "Error al cancelar el despacho",
+          message: "Error al iniciar transacción",
           error: err.message
         });
       }
 
-      // Actualizar estado de la receta
-      Despacho.actualizarEstadoReceta(id_receta, 'cancelada', (recetaErr) => {
-        if (recetaErr) {
-          console.error("Error al actualizar estado de receta:", recetaErr);
+      // Crear registro de despacho cancelado
+      const despachoData = {
+        id_receta,
+        id_usuario,
+        estado: 'cancelado',
+        observaciones,
+        razon_cancelacion
+      };
+
+      Despacho.crearDespachoCancelado(despachoData, (despachoErr, idDespacho) => {
+        if (despachoErr) {
+          return db.rollback(() => {
+            res.status(500).json({
+              success: false,
+              message: "Error al cancelar el despacho",
+              error: despachoErr.message
+            });
+          });
         }
 
-        res.status(201).json({
-          success: true,
-          message: "Despacho cancelado exitosamente",
-          data: { id_despacho: idDespacho, tipo: 'cancelado' }
+        // Actualizar TODOS los detalles de receta a estado 'cancelado'
+        // y resetear cantidad_despachada a 0
+        const cancelarDetallesSql = `
+          UPDATE detalle_receta 
+          SET estado = 'cancelado', cantidad_despachada = 0
+          WHERE id_receta = ?
+        `;
+
+        db.query(cancelarDetallesSql, [id_receta], (cancelErr) => {
+          if (cancelErr) {
+            return db.rollback(() => {
+              res.status(500).json({
+                success: false,
+                message: "Error al cancelar detalles de receta",
+                error: cancelErr.message
+              });
+            });
+          }
+
+          // Actualizar estado de la receta
+          Despacho.actualizarEstadoReceta(id_receta, 'cancelada', (recetaErr) => {
+            if (recetaErr) {
+              return db.rollback(() => {
+                res.status(500).json({
+                  success: false,
+                  message: "Error al actualizar estado de receta",
+                  error: recetaErr.message
+                });
+              });
+            }
+
+            // Commit transaction
+            db.commit((commitErr) => {
+              if (commitErr) {
+                return db.rollback(() => {
+                  res.status(500).json({
+                    success: false,
+                    message: "Error al confirmar transacción",
+                    error: commitErr.message
+                  });
+                });
+              }
+
+              res.status(201).json({
+                success: true,
+                message: "Despacho cancelado exitosamente",
+                data: { id_despacho: idDespacho, tipo: 'cancelado' }
+              });
+            });
+          });
         });
       });
     });
@@ -173,144 +223,235 @@ exports.realizarDespacho = (req, res) => {
       // Procesar cada detalle
       let detallesProcesados = 0;
       let erroresDetalle = [];
-      const totalDetalles = detalles.reduce((sum, d) => sum + d.lotes.length, 0);
+      
+      // Primero obtener todos los detalles de la receta para manejar estados correctamente
+      const obtenerDetallesSql = `
+        SELECT dr.*, m.nombre as nombre_medicamento,
+               (SELECT SUM(s.cantidad_disponible) 
+                FROM stock s 
+                WHERE s.id_medicamento = dr.id_medicamento 
+                AND s.estado = 'activo') AS stock_disponible
+        FROM detalle_receta dr
+        JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+        WHERE dr.id_receta = ?
+      `;
 
-      if (totalDetalles === 0) {
-        return db.rollback(() => {
-          res.status(400).json({
-            success: false,
-            message: "No hay detalles para procesar"
+      db.query(obtenerDetallesSql, [id_receta], (detallesErr, todosLosDetalles) => {
+        if (detallesErr) {
+          return db.rollback(() => {
+            res.status(500).json({
+              success: false,
+              message: "Error al obtener detalles de receta",
+              error: detallesErr.message
+            });
           });
-        });
-      }
+        }
 
-      detalles.forEach((detalle) => {
-        const { id_detalle_receta, lotes } = detalle;
-        let cantidadTotalDespachada = 0;
+        // Crear un mapa de detalles enviados en el request
+        const detallesEnviados = {};
+        if (detalles && detalles.length > 0) {
+          detalles.forEach(detalle => {
+            detallesEnviados[detalle.id_detalle_receta] = detalle;
+          });
+        }
 
-        lotes.forEach((lote) => {
-          const detalleDespachoData = {
-            id_despacho: idDespacho,
-            id_detalle_receta,
-            id_stock: lote.id_stock,
-            cantidad_despachada: lote.cantidad
-          };
-
-          // Crear detalle de despacho
-          Despacho.crearDetalleDespacho(detalleDespachoData, (detalleErr) => {
-            if (detalleErr) {
-              erroresDetalle.push(detalleErr);
-              detallesProcesados++;
-
-              if (detallesProcesados === totalDetalles) {
-                // Si hay errores, hacer rollback
+        // Procesar todos los detalles de la receta
+        const procesarDetalle = (index) => {
+          if (index >= todosLosDetalles.length) {
+            // Todos los detalles procesados, determinar estado final de la receta
+            determinarEstadoFinalReceta(id_receta, (estadoErr, estadoFinal) => {
+              if (estadoErr) {
                 return db.rollback(() => {
                   res.status(500).json({
                     success: false,
-                    message: "Error al procesar detalles del despacho",
-                    errors: erroresDetalle
+                    message: "Error al determinar estado final",
+                    error: estadoErr.message
                   });
                 });
               }
-              return;
-            }
 
-            // Actualizar stock
-            Despacho.actualizarStockDespacho(lote.id_stock, lote.cantidad, (stockErr) => {
-              if (stockErr) {
-                erroresDetalle.push(stockErr);
-                detallesProcesados++;
-
-                if (detallesProcesados === totalDetalles) {
-                  // Si hay errores, hacer rollback
+              // Actualizar estado de la receta
+              Despacho.actualizarEstadoReceta(id_receta, estadoFinal, (recetaErr) => {
+                if (recetaErr) {
                   return db.rollback(() => {
                     res.status(500).json({
                       success: false,
-                      message: "Error al actualizar stock",
-                      errors: erroresDetalle
+                      message: "Error al actualizar estado de receta",
+                      error: recetaErr.message
                     });
                   });
                 }
-                return;
-              }
 
-              cantidadTotalDespachada += parseInt(lote.cantidad);
-              detallesProcesados++;
-
-              // Verificar si se procesaron todos los lotes de este detalle
-              if (detallesProcesados === totalDetalles) {
-                // Actualizar cantidad despachada en el detalle de receta
-                Despacho.actualizarCantidadDespachadaDetalleReceta(id_detalle_receta, cantidadTotalDespachada, (cantidadErr) => {
-                  if (cantidadErr) {
-                    erroresDetalle.push(cantidadErr);
-                  }
-
-                  // Actualizar estado del detalle de receta según tipo de despacho
-                  const estadoDetalle = tipo_despacho === 'completo' ? 'despachado' : 'despachado_parcial';
-
-                  Despacho.actualizarEstadoDetalleReceta(id_detalle_receta, estadoDetalle, (estadoErr) => {
-                    if (estadoErr) {
-                      erroresDetalle.push(estadoErr);
-                    }
-
-                    if (erroresDetalle.length > 0) {
-                      return db.rollback(() => {
-                        res.status(500).json({
-                          success: false,
-                          message: "Error al procesar detalles del despacho",
-                          errors: erroresDetalle
-                        });
-                      });
-                    }
-
-                    // Actualizar estado de la receta
-                    const estadoReceta = tipo_despacho === 'completo' ? 'despachada' : 'despachada_parcial';
-
-                    Despacho.actualizarEstadoReceta(id_receta, estadoReceta, (recetaErr) => {
-                      if (recetaErr) {
-                        return db.rollback(() => {
-                          res.status(500).json({
-                            success: false,
-                            message: "Error al actualizar estado de receta",
-                            error: recetaErr.message
-                          });
-                        });
-                      }
-
-                      // Commit transaction
-                      db.commit((commitErr) => {
-                        if (commitErr) {
-                          return db.rollback(() => {
-                            res.status(500).json({
-                              success: false,
-                              message: "Error al confirmar transacción",
-                              error: commitErr.message
-                            });
-                          });
-                        }
-
-                        res.status(201).json({
-                          success: true,
-                          message: `Despacho ${tipo_despacho} realizado exitosamente`,
-                          data: {
-                            id_despacho: idDespacho,
-                            tipo: tipo_despacho
-                          }
-                        });
+                // Commit transaction
+                db.commit((commitErr) => {
+                  if (commitErr) {
+                    return db.rollback(() => {
+                      res.status(500).json({
+                        success: false,
+                        message: "Error al confirmar transacción",
+                        error: commitErr.message
                       });
                     });
+                  }
+
+                  res.status(201).json({
+                    success: true,
+                    message: `Despacho ${tipo_despacho} realizado exitosamente`,
+                    data: {
+                      id_despacho: idDespacho,
+                      tipo: tipo_despacho,
+                      estado_final_receta: estadoFinal
+                    }
                   });
                 });
-              }
+              });
             });
+            return;
+          }
+
+          const detalleActual = todosLosDetalles[index];
+          const detalleEnviado = detallesEnviados[detalleActual.id_detalle_receta];
+
+          // Determinar estado y cantidad para este detalle
+          let estadoDetalle;
+          let cantidadDespachada = 0;
+
+          if (!detalleEnviado || !detalleEnviado.lotes || detalleEnviado.lotes.length === 0) {
+            // No hay lotes seleccionados para este medicamento
+            if (detalleActual.stock_disponible === 0 || detalleActual.stock_disponible < detalleActual.cantidad) {
+              estadoDetalle = 'no_disponible';
+            } else {
+              estadoDetalle = 'pendiente'; // O el estado que tenía antes
+            }
+            cantidadDespachada = 0;
+          } else {
+            // Hay lotes seleccionados, calcular cantidad total
+            cantidadDespachada = detalleEnviado.lotes.reduce(
+              (sum, lote) => sum + (parseInt(lote.cantidad) || 0), 
+              0
+            );
+
+            // Determinar estado basado en cantidad despachada
+            if (cantidadDespachada === 0) {
+              if (detalleActual.stock_disponible === 0) {
+                estadoDetalle = 'no_disponible';
+              } else {
+                estadoDetalle = 'pendiente';
+              }
+            } else if (cantidadDespachada >= detalleActual.cantidad) {
+              estadoDetalle = 'despachado';
+              cantidadDespachada = detalleActual.cantidad; // No puede ser mayor a lo solicitado
+            } else {
+              estadoDetalle = 'despachado_parcial';
+            }
+          }
+
+          // Actualizar el detalle de receta
+          const actualizarDetalleSql = `
+            UPDATE detalle_receta 
+            SET cantidad_despachada = ?, estado = ?
+            WHERE id_detalle_receta = ?
+          `;
+
+          db.query(actualizarDetalleSql, [cantidadDespachada, estadoDetalle, detalleActual.id_detalle_receta], (updateErr) => {
+            if (updateErr) {
+              erroresDetalle.push(`Error al actualizar detalle ${detalleActual.id_detalle_receta}: ${updateErr.message}`);
+              return procesarDetalle(index + 1);
+            }
+
+            // Si hay lotes para despachar, crear los registros de detalle_despacho
+            if (detalleEnviado && detalleEnviado.lotes && detalleEnviado.lotes.length > 0) {
+              let lotesProcessed = 0;
+              const totalLotes = detalleEnviado.lotes.length;
+
+              if (totalLotes === 0) {
+                return procesarDetalle(index + 1);
+              }
+
+              detalleEnviado.lotes.forEach((lote) => {
+                if (parseInt(lote.cantidad) > 0) {
+                  const detalleDespachoData = {
+                    id_despacho: idDespacho,
+                    id_detalle_receta: detalleActual.id_detalle_receta,
+                    id_stock: lote.id_stock,
+                    cantidad_despachada: parseInt(lote.cantidad)
+                  };
+
+                  // Crear detalle de despacho
+                  Despacho.crearDetalleDespacho(detalleDespachoData, (detalleErr) => {
+                    if (detalleErr) {
+                      erroresDetalle.push(`Error al crear detalle despacho: ${detalleErr.message}`);
+                    } else {
+                      // Actualizar stock
+                      Despacho.actualizarStockDespacho(lote.id_stock, parseInt(lote.cantidad), (stockErr) => {
+                        if (stockErr) {
+                          erroresDetalle.push(`Error al actualizar stock: ${stockErr.message}`);
+                        }
+                      });
+                    }
+
+                    lotesProcessed++;
+                    if (lotesProcessed === totalLotes) {
+                      procesarDetalle(index + 1);
+                    }
+                  });
+                } else {
+                  lotesProcessed++;
+                  if (lotesProcessed === totalLotes) {
+                    procesarDetalle(index + 1);
+                  }
+                }
+              });
+            } else {
+              procesarDetalle(index + 1);
+            }
           });
-        });
+        };
+
+        // Comenzar procesamiento
+        procesarDetalle(0);
       });
     });
   });
 };
 
-// Cancelar despacho
+// Función auxiliar para determinar el estado final de la receta
+function determinarEstadoFinalReceta(idReceta, callback) {
+  const sql = `
+    SELECT 
+      COUNT(*) as total_detalles,
+      COUNT(CASE WHEN estado = 'despachado' THEN 1 END) as despachados_completos,
+      COUNT(CASE WHEN estado = 'despachado_parcial' THEN 1 END) as despachados_parciales,
+      COUNT(CASE WHEN estado = 'cancelado' THEN 1 END) as cancelados,
+      COUNT(CASE WHEN estado = 'no_disponible' THEN 1 END) as no_disponibles,
+      COUNT(CASE WHEN estado = 'pendiente' THEN 1 END) as pendientes
+    FROM detalle_receta 
+    WHERE id_receta = ?
+  `;
+
+  db.query(sql, [idReceta], (err, results) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    const stats = results[0];
+    let estadoFinal;
+
+    if (stats.cancelados === stats.total_detalles) {
+      estadoFinal = 'cancelada';
+    } else if (stats.despachados_completos === stats.total_detalles) {
+      estadoFinal = 'despachada';
+    } else if (stats.despachados_completos > 0 || stats.despachados_parciales > 0) {
+      estadoFinal = 'despachada_parcial';
+    } else {
+      estadoFinal = 'pendiente';
+    }
+
+    callback(null, estadoFinal);
+  });
+}
+
+// Cancelar despacho - ACTUALIZADO
 exports.cancelarDespacho = (req, res) => {
   const { id_receta, razon_cancelacion, observaciones } = req.body;
 
@@ -331,40 +472,90 @@ exports.cancelarDespacho = (req, res) => {
     });
   }
 
-  // Crear registro de despacho cancelado
-  const despachoData = {
-    id_receta,
-    id_usuario,
-    estado: 'cancelado',
-    observaciones,
-    razon_cancelacion
-  };
-
-  Despacho.crearDespachoCancelado(despachoData, (err, idDespacho) => {
+  db.beginTransaction((err) => {
     if (err) {
       return res.status(500).json({
         success: false,
-        message: "Error al cancelar el despacho",
+        message: "Error al iniciar transacción",
         error: err.message
       });
     }
 
-    // Actualizar estado de la receta
-    Despacho.actualizarEstadoReceta(id_receta, 'cancelada', (recetaErr) => {
-      if (recetaErr) {
-        console.error("Error al actualizar estado de receta:", recetaErr);
+    // Crear registro de despacho cancelado
+    const despachoData = {
+      id_receta,
+      id_usuario,
+      estado: 'cancelado',
+      observaciones,
+      razon_cancelacion
+    };
+
+    Despacho.crearDespachoCancelado(despachoData, (despachoErr, idDespacho) => {
+      if (despachoErr) {
+        return db.rollback(() => {
+          res.status(500).json({
+            success: false,
+            message: "Error al cancelar el despacho",
+            error: despachoErr.message
+          });
+        });
       }
 
-      res.status(201).json({
-        success: true,
-        message: "Despacho cancelado exitosamente",
-        data: { id_despacho: idDespacho, tipo: 'cancelado' }
+      // Actualizar TODOS los detalles de receta a estado 'cancelado'
+      const cancelarDetallesSql = `
+        UPDATE detalle_receta 
+        SET estado = 'cancelado', cantidad_despachada = 0
+        WHERE id_receta = ?
+      `;
+
+      db.query(cancelarDetallesSql, [id_receta], (cancelErr) => {
+        if (cancelErr) {
+          return db.rollback(() => {
+            res.status(500).json({
+              success: false,
+              message: "Error al cancelar detalles de receta",
+              error: cancelErr.message
+            });
+          });
+        }
+
+        // Actualizar estado de la receta
+        Despacho.actualizarEstadoReceta(id_receta, 'cancelada', (recetaErr) => {
+          if (recetaErr) {
+            return db.rollback(() => {
+              res.status(500).json({
+                success: false,
+                message: "Error al actualizar estado de receta",
+                error: recetaErr.message
+              });
+            });
+          }
+
+          // Commit transaction
+          db.commit((commitErr) => {
+            if (commitErr) {
+              return db.rollback(() => {
+                res.status(500).json({
+                  success: false,
+                  message: "Error al confirmar transacción",
+                  error: commitErr.message
+                });
+              });
+            }
+
+            res.status(201).json({
+              success: true,
+              message: "Despacho cancelado exitosamente",
+              data: { id_despacho: idDespacho, tipo: 'cancelado' }
+            });
+          });
+        });
       });
     });
   });
 };
 
-// Listar historial de despachos con paginación y filtros
+// Resto de funciones sin cambios...
 exports.listarHistorialDespachos = (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -399,7 +590,6 @@ exports.listarHistorialDespachos = (req, res) => {
   });
 };
 
-// Obtener detalle de un despacho
 exports.obtenerDetalleDespacho = (req, res) => {
   const idDespacho = req.params.idDespacho;
 
@@ -426,7 +616,6 @@ exports.obtenerDetalleDespacho = (req, res) => {
   });
 };
 
-// Obtener estadísticas para el dashboard
 exports.obtenerEstadisticasDashboard = (req, res) => {
   Despacho.obtenerEstadisticasDashboard((err, result) => {
     if (err) {
@@ -444,7 +633,6 @@ exports.obtenerEstadisticasDashboard = (req, res) => {
   });
 };
 
-// Obtener resumen de despachos por período
 exports.obtenerResumenDespachos = (req, res) => {
   const { fechaInicio, fechaFin } = req.query;
 
@@ -471,7 +659,6 @@ exports.obtenerResumenDespachos = (req, res) => {
   });
 };
 
-// Obtener métricas de rendimiento del despachador
 exports.obtenerMetricasRendimiento = (req, res) => {
   const { idUsuario, periodo } = req.query;
   const userId = idUsuario || req.session.user?.id_usuario;
@@ -479,7 +666,6 @@ exports.obtenerMetricasRendimiento = (req, res) => {
   let fechaInicio;
   const fechaFin = new Date().toISOString().split('T')[0];
 
-  // Calcular fecha de inicio según el período
   switch (periodo) {
     case 'semana':
       fechaInicio = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

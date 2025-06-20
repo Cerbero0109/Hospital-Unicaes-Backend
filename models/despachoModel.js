@@ -3,7 +3,7 @@ const db = require("../database/conexion");
 
 const Despacho = {};
 
-// Listar recetas pendientes de despacho
+// Listar recetas pendientes
 Despacho.listarRecetasPendientes = (callback) => {
   const sql = `
     SELECT 
@@ -36,46 +36,7 @@ Despacho.listarRecetasPendientes = (callback) => {
   });
 };
 
-// Obtener detalle de una receta con información completa (actualizado)
-Despacho.obtenerDetalleReceta = (idReceta, callback) => {
-  const sql = `
-    SELECT 
-      dr.id_detalle_receta,
-      dr.id_medicamento,
-      dr.cantidad,
-      dr.cantidad_despachada,
-      dr.dosis,
-      dr.frecuencia,
-      dr.duracion,
-      dr.instrucciones,
-      dr.estado AS estado_detalle,
-      m.codigo,
-      m.nombre AS nombre_medicamento,
-      m.concentracion,
-      m.via_administracion,
-      m.ubicacion_almacen,
-      p.nombre_presentacion,
-      (SELECT SUM(s.cantidad_disponible) 
-       FROM stock s 
-       WHERE s.id_medicamento = m.id_medicamento 
-       AND s.estado = 'activo') AS stock_disponible
-    FROM detalle_receta dr
-    JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
-    LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
-    WHERE dr.id_receta = ?
-    ORDER BY dr.id_detalle_receta
-  `;
-
-  db.query(sql, [idReceta], (err, results) => {
-    if (err) {
-      console.error("Error al obtener detalle de receta:", err);
-      return callback(err, null);
-    }
-    return callback(null, results);
-  });
-};
-
-// Obtener información completa de receta para despacho (nuevo método)
+// Obtener detalle de una receta con información completa
 Despacho.obtenerInformacionCompletaReceta = (idReceta, callback) => {
   const sql = `
     SELECT 
@@ -112,7 +73,7 @@ Despacho.obtenerInformacionCompletaReceta = (idReceta, callback) => {
       return callback(null, null);
     }
 
-    // Obtener detalles de medicamentos
+    // Obtener detalles de medicamentos con información de stock actual
     const detallesSql = `
       SELECT 
         dr.id_detalle_receta,
@@ -157,225 +118,14 @@ Despacho.obtenerInformacionCompletaReceta = (idReceta, callback) => {
   });
 };
 
-// Listar historial de despachos (actualizado para incluir número de expediente)
-Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
-  const offset = (page - 1) * limit;
-
-  let whereClause = '';
-  const queryParams = [];
-
-  // Construir filtros
-  const conditions = [];
-
-  if (filtros && filtros.estado) {
-    conditions.push('d.estado = ?');
-    queryParams.push(filtros.estado);
-  }
-
-  if (filtros && filtros.fechaInicio && filtros.fechaFin) {
-    conditions.push('DATE(d.fecha_despacho) BETWEEN ? AND ?');
-    queryParams.push(filtros.fechaInicio, filtros.fechaFin);
-  }
-
-  if (conditions.length > 0) {
-    whereClause = 'WHERE ' + conditions.join(' AND ');
-  }
-
-  const sql = `
-    SELECT 
-      d.id_despacho,
-      d.fecha_despacho,
-      d.estado AS estado_despacho,
-      d.observaciones,
-      d.razon_cancelacion,
-      r.id_receta,
-      p.id_paciente,
-      p.n_expediente,
-      CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
-      u.id_usuario AS id_despachador,
-      CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
-      um.id_usuario AS id_medico,
-      CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
-      CASE 
-        WHEN d.estado = 'cancelado' THEN 'Cancelado'
-        ELSE GROUP_CONCAT(CONCAT(m.nombre, ' (', dd.cantidad_despachada, '/', dr.cantidad, ')') SEPARATOR ', ')
-      END AS medicamentos
-    FROM despacho d
-    JOIN receta_medica r ON d.id_receta = r.id_receta
-    JOIN consulta c ON r.id_consulta = c.id_consulta
-    JOIN paciente p ON c.id_paciente = p.id_paciente
-    JOIN usuario u ON d.id_usuario = u.id_usuario
-    JOIN usuario um ON c.id_usuario = um.id_usuario
-    LEFT JOIN detalle_despacho dd ON d.id_despacho = dd.id_despacho
-    LEFT JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
-    LEFT JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
-    ${whereClause}
-    GROUP BY d.id_despacho
-    ORDER BY d.fecha_despacho DESC
-    LIMIT ? OFFSET ?
-  `;
-
-  // Agregar parámetros para LIMIT y OFFSET
-  queryParams.push(limit, offset);
-
-  db.query(sql, queryParams, (err, results) => {
-    if (err) {
-      console.error("Error al listar historial de despachos:", err);
-      return callback(err, null);
-    }
-
-    // Obtener el total de registros con filtros
-    let countSql = `
-      SELECT COUNT(*) as total 
-      FROM despacho d
-      ${whereClause}
-    `;
-
-    // Remover los parámetros de LIMIT y OFFSET para la consulta de conteo
-    const countParams = queryParams.slice(0, -2);
-
-    db.query(countSql, countParams, (countErr, countResult) => {
-      if (countErr) {
-        console.error("Error al contar despachos:", countErr);
-        return callback(countErr, null);
-      }
-
-      return callback(null, {
-        data: results,
-        total: countResult[0].total,
-        page: page,
-        limit: limit,
-        totalPages: Math.ceil(countResult[0].total / limit)
-      });
-    });
-  });
-};
-
-// Obtener detalle de un despacho específico (actualizado)
-Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
-  const sql = `
-    SELECT 
-      d.*,
-      r.id_receta,
-      r.fecha_receta,
-      r.observaciones AS observaciones_receta,
-      p.id_paciente,
-      p.n_expediente,
-      CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
-      p.dui_paciente,
-      u.id_usuario AS id_despachador,
-      CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
-      um.id_usuario AS id_medico,
-      CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
-      e.nombre_especialidad AS especialidad
-    FROM despacho d
-    JOIN receta_medica r ON d.id_receta = r.id_receta
-    JOIN consulta c ON r.id_consulta = c.id_consulta
-    JOIN paciente p ON c.id_paciente = p.id_paciente
-    JOIN usuario u ON d.id_usuario = u.id_usuario
-    JOIN usuario um ON c.id_usuario = um.id_usuario
-    LEFT JOIN especialidad e ON um.id_especialidad = e.id_especialidad
-    WHERE d.id_despacho = ?
-  `;
-
-  db.query(sql, [idDespacho], (err, result) => {
-    if (err) {
-      console.error("Error al obtener detalle de despacho:", err);
-      return callback(err, null);
-    }
-
-    if (result.length === 0) {
-      return callback(null, null);
-    }
-
-    // Si es un despacho cancelado, no necesitamos obtener detalles de medicamentos
-    if (result[0].estado === 'cancelado') {
-      return callback(null, result[0]);
-    }
-
-    // Para despachos completos o parciales, obtener detalles de medicamentos
-    const detallesSql = `
-      SELECT 
-        dd.*,
-        dr.id_medicamento,
-        dr.cantidad AS cantidad_requerida,
-        dr.cantidad_despachada AS cantidad_total_despachada,
-        dr.dosis,
-        dr.frecuencia,
-        dr.duracion,
-        dr.instrucciones,
-        dr.estado as estado_detalle_receta,
-        m.codigo,
-        m.nombre AS nombre_medicamento,
-        m.concentracion,
-        m.via_administracion,
-        p.nombre_presentacion,
-        s.numero_lote,
-        s.fecha_caducidad
-      FROM detalle_despacho dd
-      JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
-      JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
-      LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
-      JOIN stock s ON dd.id_stock = s.id_stock
-      WHERE dd.id_despacho = ?
-      ORDER BY dr.id_detalle_receta, s.fecha_caducidad
-    `;
-
-    db.query(detallesSql, [idDespacho], (detErr, detalles) => {
-      if (detErr) {
-        console.error("Error al obtener detalles de medicamentos:", detErr);
-        return callback(detErr, null);
-      }
-
-      // Agrupar detalles por medicamento para mejor visualización
-      const medicamentosAgrupados = {};
-      detalles.forEach(detalle => {
-        if (!medicamentosAgrupados[detalle.id_medicamento]) {
-          medicamentosAgrupados[detalle.id_medicamento] = {
-            id_medicamento: detalle.id_medicamento,
-            nombre_medicamento: detalle.nombre_medicamento,
-            concentracion: detalle.concentracion,
-            via_administracion: detalle.via_administracion,
-            nombre_presentacion: detalle.nombre_presentacion,
-            cantidad_requerida: detalle.cantidad_requerida,
-            dosis: detalle.dosis,
-            frecuencia: detalle.frecuencia,
-            duracion: detalle.duracion,
-            instrucciones: detalle.instrucciones,
-            cantidad_total_despachada: 0,
-            estado_detalle_receta: detalle.estado_detalle_receta,
-            lotes: []
-          };
-        }
-
-        // Agregar la cantidad despachada al total
-        medicamentosAgrupados[detalle.id_medicamento].cantidad_total_despachada += detalle.cantidad_despachada;
-
-        medicamentosAgrupados[detalle.id_medicamento].lotes.push({
-          id_stock: detalle.id_stock,
-          numero_lote: detalle.numero_lote,
-          cantidad_despachada: detalle.cantidad_despachada,
-          fecha_caducidad: detalle.fecha_caducidad
-        });
-      });
-
-      const despacho = {
-        ...result[0],
-        detalles: Object.values(medicamentosAgrupados)
-      };
-
-      return callback(null, despacho);
-    });
-  });
-};
-
-// Obtener detalle de una receta con sus medicamentos
+// Obtener detalle de receta
 Despacho.obtenerDetalleReceta = (idReceta, callback) => {
   const sql = `
     SELECT 
       dr.id_detalle_receta,
       dr.id_medicamento,
       dr.cantidad,
+      dr.cantidad_despachada,
       dr.dosis,
       dr.frecuencia,
       dr.duracion,
@@ -395,6 +145,7 @@ Despacho.obtenerDetalleReceta = (idReceta, callback) => {
     JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
     LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
     WHERE dr.id_receta = ?
+    ORDER BY dr.id_detalle_receta
   `;
 
   db.query(sql, [idReceta], (err, results) => {
@@ -451,7 +202,7 @@ Despacho.crearDespacho = (despachoData, callback) => {
   });
 };
 
-// Crear despacho cancelado (incluye razón de cancelación)
+// Crear despacho cancelado
 Despacho.crearDespachoCancelado = (despachoData, callback) => {
   const { id_receta, id_usuario, estado, observaciones, razon_cancelacion } = despachoData;
 
@@ -517,40 +268,6 @@ Despacho.actualizarStockDespacho = (idStock, cantidadDespachada, callback) => {
   });
 };
 
-// Actualizar cantidad despachada en detalle_receta
-Despacho.actualizarCantidadDespachadaDetalleReceta = (idDetalleReceta, cantidadDespachada, callback) => {
-  const sql = `
-    UPDATE detalle_receta 
-    SET cantidad_despachada = cantidad_despachada + ?
-    WHERE id_detalle_receta = ?
-  `;
-
-  db.query(sql, [cantidadDespachada, idDetalleReceta], (err, result) => {
-    if (err) {
-      console.error("Error al actualizar cantidad despachada:", err);
-      return callback(err, null);
-    }
-    return callback(null, result);
-  });
-};
-
-// Actualizar estado de detalle de receta
-Despacho.actualizarEstadoDetalleReceta = (idDetalleReceta, estado, callback) => {
-  const sql = `
-    UPDATE detalle_receta 
-    SET estado = ?
-    WHERE id_detalle_receta = ?
-  `;
-
-  db.query(sql, [estado, idDetalleReceta], (err, result) => {
-    if (err) {
-      console.error("Error al actualizar estado de detalle de receta:", err);
-      return callback(err, null);
-    }
-    return callback(null, result);
-  });
-};
-
 // Actualizar estado de receta
 Despacho.actualizarEstadoReceta = (idReceta, estado, callback) => {
   const sql = `
@@ -568,6 +285,288 @@ Despacho.actualizarEstadoReceta = (idReceta, estado, callback) => {
   });
 };
 
+// Función para verificar disponibilidad de medicamentos en una receta
+Despacho.verificarDisponibilidadReceta = (idReceta, callback) => {
+  const sql = `
+    SELECT 
+      dr.id_detalle_receta,
+      dr.id_medicamento,
+      dr.cantidad,
+      dr.cantidad_despachada,
+      m.nombre AS nombre_medicamento,
+      (SELECT SUM(s.cantidad_disponible) 
+       FROM stock s 
+       WHERE s.id_medicamento = dr.id_medicamento 
+       AND s.estado = 'activo') AS stock_disponible,
+      CASE 
+        WHEN (SELECT SUM(s.cantidad_disponible) 
+              FROM stock s 
+              WHERE s.id_medicamento = dr.id_medicamento 
+              AND s.estado = 'activo') >= dr.cantidad THEN 'disponible'
+        WHEN (SELECT SUM(s.cantidad_disponible) 
+              FROM stock s 
+              WHERE s.id_medicamento = dr.id_medicamento 
+              AND s.estado = 'activo') > 0 THEN 'parcial'
+        ELSE 'no_disponible'
+      END AS disponibilidad
+    FROM detalle_receta dr
+    JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+    WHERE dr.id_receta = ?
+    ORDER BY dr.id_detalle_receta
+  `;
+
+  db.query(sql, [idReceta], (err, results) => {
+    if (err) {
+      console.error("Error al verificar disponibilidad:", err);
+      return callback(err, null);
+    }
+    return callback(null, results);
+  });
+};
+
+// Función para actualizar estado de detalle de receta específico
+Despacho.actualizarEstadoDetalleReceta = (idDetalleReceta, estado, cantidadDespachada, callback) => {
+  const sql = `
+    UPDATE detalle_receta 
+    SET estado = ?, cantidad_despachada = ?
+    WHERE id_detalle_receta = ?
+  `;
+
+  db.query(sql, [estado, cantidadDespachada, idDetalleReceta], (err, result) => {
+    if (err) {
+      console.error("Error al actualizar estado de detalle de receta:", err);
+      return callback(err, null);
+    }
+    return callback(null, result);
+  });
+};
+
+// Función para obtener el estado actual de todos los detalles de una receta
+Despacho.obtenerEstadosDetalleReceta = (idReceta, callback) => {
+  const sql = `
+    SELECT 
+      COUNT(*) as total_detalles,
+      COUNT(CASE WHEN estado = 'despachado' THEN 1 END) as despachados_completos,
+      COUNT(CASE WHEN estado = 'despachado_parcial' THEN 1 END) as despachados_parciales,
+      COUNT(CASE WHEN estado = 'cancelado' THEN 1 END) as cancelados,
+      COUNT(CASE WHEN estado = 'no_disponible' THEN 1 END) as no_disponibles,
+      COUNT(CASE WHEN estado = 'pendiente' THEN 1 END) as pendientes
+    FROM detalle_receta 
+    WHERE id_receta = ?
+  `;
+
+  db.query(sql, [idReceta], (err, results) => {
+    if (err) {
+      console.error("Error al obtener estados de detalle de receta:", err);
+      return callback(err, null);
+    }
+    return callback(null, results[0]);
+  });
+};
+
+// Listar historial de despachos
+Despacho.listarHistorialDespachos = (page, limit, filtros, callback) => {
+  const offset = (page - 1) * limit;
+
+  let whereClause = '';
+  const queryParams = [];
+
+  const conditions = [];
+
+  if (filtros && filtros.estado) {
+    conditions.push('d.estado = ?');
+    queryParams.push(filtros.estado);
+  }
+
+  if (filtros && filtros.fechaInicio && filtros.fechaFin) {
+    conditions.push('DATE(d.fecha_despacho) BETWEEN ? AND ?');
+    queryParams.push(filtros.fechaInicio, filtros.fechaFin);
+  }
+
+  if (conditions.length > 0) {
+    whereClause = 'WHERE ' + conditions.join(' AND ');
+  }
+
+  const sql = `
+    SELECT 
+      d.id_despacho,
+      d.fecha_despacho,
+      d.estado AS estado_despacho,
+      d.observaciones,
+      d.razon_cancelacion,
+      r.id_receta,
+      p.id_paciente,
+      p.n_expediente,
+      CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
+      u.id_usuario AS id_despachador,
+      CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
+      um.id_usuario AS id_medico,
+      CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
+      CASE 
+        WHEN d.estado = 'cancelado' THEN 'Cancelado'
+        ELSE GROUP_CONCAT(CONCAT(m.nombre, ' (', dd.cantidad_despachada, '/', dr.cantidad, ')') SEPARATOR ', ')
+      END AS medicamentos
+    FROM despacho d
+    JOIN receta_medica r ON d.id_receta = r.id_receta
+    JOIN consulta c ON r.id_consulta = c.id_consulta
+    JOIN paciente p ON c.id_paciente = p.id_paciente
+    JOIN usuario u ON d.id_usuario = u.id_usuario
+    JOIN usuario um ON c.id_usuario = um.id_usuario
+    LEFT JOIN detalle_despacho dd ON d.id_despacho = dd.id_despacho
+    LEFT JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
+    LEFT JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+    ${whereClause}
+    GROUP BY d.id_despacho
+    ORDER BY d.fecha_despacho DESC
+    LIMIT ? OFFSET ?
+  `;
+
+  queryParams.push(limit, offset);
+
+  db.query(sql, queryParams, (err, results) => {
+    if (err) {
+      console.error("Error al listar historial de despachos:", err);
+      return callback(err, null);
+    }
+
+    let countSql = `
+      SELECT COUNT(*) as total 
+      FROM despacho d
+      ${whereClause}
+    `;
+
+    const countParams = queryParams.slice(0, -2);
+
+    db.query(countSql, countParams, (countErr, countResult) => {
+      if (countErr) {
+        console.error("Error al contar despachos:", countErr);
+        return callback(countErr, null);
+      }
+
+      return callback(null, {
+        data: results,
+        total: countResult[0].total,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(countResult[0].total / limit)
+      });
+    });
+  });
+};
+
+// Obtener detalle de un despacho específico
+Despacho.obtenerDetalleDespacho = (idDespacho, callback) => {
+  const sql = `
+    SELECT 
+      d.*,
+      r.id_receta,
+      r.fecha_receta,
+      r.observaciones AS observaciones_receta,
+      p.id_paciente,
+      p.n_expediente,
+      CONCAT(p.nombre_paciente, ' ', p.apellido_paciente) AS nombre_paciente,
+      p.dui_paciente,
+      u.id_usuario AS id_despachador,
+      CONCAT(u.nombre, ' ', u.apellido) AS nombre_despachador,
+      um.id_usuario AS id_medico,
+      CONCAT(um.nombre, ' ', um.apellido) AS nombre_medico,
+      e.nombre_especialidad AS especialidad
+    FROM despacho d
+    JOIN receta_medica r ON d.id_receta = r.id_receta
+    JOIN consulta c ON r.id_consulta = c.id_consulta
+    JOIN paciente p ON c.id_paciente = p.id_paciente
+    JOIN usuario u ON d.id_usuario = u.id_usuario
+    JOIN usuario um ON c.id_usuario = um.id_usuario
+    LEFT JOIN especialidad e ON um.id_especialidad = e.id_especialidad
+    WHERE d.id_despacho = ?
+  `;
+
+  db.query(sql, [idDespacho], (err, result) => {
+    if (err) {
+      console.error("Error al obtener detalle de despacho:", err);
+      return callback(err, null);
+    }
+
+    if (result.length === 0) {
+      return callback(null, null);
+    }
+
+    if (result[0].estado === 'cancelado') {
+      return callback(null, result[0]);
+    }
+
+    const detallesSql = `
+      SELECT 
+        dd.*,
+        dr.id_medicamento,
+        dr.cantidad AS cantidad_requerida,
+        dr.cantidad_despachada AS cantidad_total_despachada,
+        dr.dosis,
+        dr.frecuencia,
+        dr.duracion,
+        dr.instrucciones,
+        dr.estado as estado_detalle_receta,
+        m.codigo,
+        m.nombre AS nombre_medicamento,
+        m.concentracion,
+        m.via_administracion,
+        p.nombre_presentacion,
+        s.numero_lote,
+        s.fecha_caducidad
+      FROM detalle_despacho dd
+      JOIN detalle_receta dr ON dd.id_detalle_receta = dr.id_detalle_receta
+      JOIN medicamento m ON dr.id_medicamento = m.id_medicamento
+      LEFT JOIN presentacion_medicamento p ON m.id_presentacion = p.id_presentacion
+      JOIN stock s ON dd.id_stock = s.id_stock
+      WHERE dd.id_despacho = ?
+      ORDER BY dr.id_detalle_receta, s.fecha_caducidad
+    `;
+
+    db.query(detallesSql, [idDespacho], (detErr, detalles) => {
+      if (detErr) {
+        console.error("Error al obtener detalles de medicamentos:", detErr);
+        return callback(detErr, null);
+      }
+
+      const medicamentosAgrupados = {};
+      detalles.forEach(detalle => {
+        if (!medicamentosAgrupados[detalle.id_medicamento]) {
+          medicamentosAgrupados[detalle.id_medicamento] = {
+            id_medicamento: detalle.id_medicamento,
+            nombre_medicamento: detalle.nombre_medicamento,
+            concentracion: detalle.concentracion,
+            via_administracion: detalle.via_administracion,
+            nombre_presentacion: detalle.nombre_presentacion,
+            cantidad_requerida: detalle.cantidad_requerida,
+            dosis: detalle.dosis,
+            frecuencia: detalle.frecuencia,
+            duracion: detalle.duracion,
+            instrucciones: detalle.instrucciones,
+            cantidad_total_despachada: 0,
+            estado_detalle_receta: detalle.estado_detalle_receta,
+            lotes: []
+          };
+        }
+
+        medicamentosAgrupados[detalle.id_medicamento].cantidad_total_despachada += detalle.cantidad_despachada;
+
+        medicamentosAgrupados[detalle.id_medicamento].lotes.push({
+          id_stock: detalle.id_stock,
+          numero_lote: detalle.numero_lote,
+          cantidad_despachada: detalle.cantidad_despachada,
+          fecha_caducidad: detalle.fecha_caducidad
+        });
+      });
+
+      const despacho = {
+        ...result[0],
+        detalles: Object.values(medicamentosAgrupados)
+      };
+
+      return callback(null, despacho);
+    });
+  });
+};
 
 // Obtener estadísticas para el dashboard
 Despacho.obtenerEstadisticasDashboard = (callback) => {
